@@ -12,9 +12,9 @@
 
 /*TO DO:
  * add maybe asynchronious processing 
- * add real chat between two users 
+ * maybe add a lot of users that can connect, try to make it via different devices 
  * maybe add some kind of ids for users
- * 
+ *    --i can achieve that by using some structure and maybe sharing not just string but whole structre with name, and message
  * */
 
 
@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
 {
   //usage serverfilename <port>
 
-  int lsocket, csocket; //listening socket and socket for connected client
+  int lSocket, firstcliSocket, secondcliSocket; //listening socket and socket for connected client
   int port;
   struct sockaddr_in serveraddr, clientaddr;
   char buffer[BUFFERSIZE];
@@ -48,8 +48,8 @@ int main(int argc, char *argv[])
   serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
   //initializing listening socket
-  lsocket = socket(AF_INET, SOCK_STREAM, 0);
-  if (lsocket<0)
+  lSocket = socket(AF_INET, SOCK_STREAM, 0);
+  if (lSocket<0)
   {
     error("socket creation failed");
   }
@@ -57,42 +57,60 @@ int main(int argc, char *argv[])
   //some cool thing to prevent error on binding "address already in use"
   //dont know how exactly it works but it looks useful so just put it here
   int optval = 1;
-  setsockopt(lsocket, SOL_SOCKET, SO_REUSEADDR, 
+  setsockopt(lSocket, SOL_SOCKET, SO_REUSEADDR, 
 	     (const void *)&optval , sizeof(int));
 
-
-  
-
   //binding it to specific port
-  int rc = bind(lsocket, (struct sockaddr*) &serveraddr, sizeof(serveraddr));
+  int rc = bind(lSocket, (struct sockaddr*) &serveraddr, sizeof(serveraddr));
   if (rc<0)
     error("binding socket failed");
 
 
-  if (listen(lsocket, BACKLOG) < 0)
+  if (listen(lSocket, BACKLOG) < 0)
     error("listening start failed");
 
   printf("Server listening port %hu", port);
   
+  socklen_t clientlen = sizeof(clientaddr);
+
+
+  firstcliSocket = accept(lSocket, (struct sockaddr*)&clientaddr, &clientlen);
+  if (firstcliSocket < 0)
+    error("first client connection failed");
+
+  printf("First client connected succesfully");
+
+  secondcliSocket = accept(lSocket, (struct sockaddr*)&clientaddr, &clientlen);
+  if (secondcliSocket<0)
+    error("second client connection failed");
+
+  printf("Second client connected succesfully");
+
+  //after succesfull connection of each client we can start chatting yay
 
 
   for(;;){
-    socklen_t clientlen = sizeof(clientaddr);
-    csocket = accept(lsocket, (struct sockaddr*)&clientaddr, &clientlen);
-    if (csocket < 0)
-      error("client connection failed");
 
-    int bytesReaded = read(csocket, buffer, BUFFERSIZE);
+    int bytesReaded = read(firstcliSocket, buffer, BUFFERSIZE);
     if (bytesReaded > 0)
     {
       printf("Received bytes: %i", bytesReaded);
-      printf("Message: %s", buffer);
+      printf("Message from first user: %s", buffer);
     }
+    write(secondcliSocket, buffer, BUFFERSIZE);
 
-      close(csocket);
+    
+    bytesReaded = read(secondcliSocket, buffer, BUFFERSIZE);
+    if (bytesReaded >0)
+    {
+      printf("Received bytes: %i", bytesReaded);
+      printf("Message from second user: %s", buffer);
+    }
+    write(firstcliSocket, buffer, BUFFERSIZE);
+
   }  
 
-  close(lsocket);
+  close(lSocket);
 }
 
 

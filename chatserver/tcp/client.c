@@ -25,10 +25,6 @@ int main(int argc, char* argv[])
   char buffer[BUFFERSIZE];
 
 
-  printf("Enter msg to send: ");
-  bzero(buffer, BUFFERSIZE);
-  fgets(buffer, BUFFERSIZE, stdin);
-
   if (argc != 3)
     error("wrong arguments! \nusage clientprogram <hostname> <port>");
 
@@ -37,6 +33,7 @@ int main(int argc, char* argv[])
     error("user socket creation failed");
 
   
+
 
   //server address structure init
   memset(&serveraddr, 0, sizeof(serveraddr)); 
@@ -54,10 +51,24 @@ int main(int argc, char* argv[])
 
   printf("connected to server %s on port %");
   
-  int n = write(csocket, buffer, sizeof(buffer));
-  if (n < 0)
-    error("could not write to socket");
+  while(1)
+  {
 
+    printf("Enter msg to send: ");
+    bzero(buffer, BUFFERSIZE);
+    fgets(buffer, BUFFERSIZE, stdin);
+
+    int n = write(csocket, buffer, sizeof(buffer));
+    if (n < 0)
+      error("could not write to socket");
+    
+    if(read(csocket, buffer, sizeof(buffer)))
+    {
+      printf("Message from your friend: %s", buffer);
+    }
+
+
+  }
 
   return 0;
 }
