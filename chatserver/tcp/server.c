@@ -56,9 +56,9 @@ int main(int argc, char *argv[])
 
   //some cool thing to prevent error on binding "address already in use"
   //dont know how exactly it works but it looks useful so just put it here
-  //int optval = 1;
-  //setsockopt(lsocket, SOL_SOCKET, SO_REUSEADDR, 
-	     //(const void *)&optval , sizeof(int));
+  int optval = 1;
+  setsockopt(lsocket, SOL_SOCKET, SO_REUSEADDR, 
+	     (const void *)&optval , sizeof(int));
 
 
   
@@ -94,11 +94,6 @@ int main(int argc, char *argv[])
 
   close(lsocket);
 }
-
-
-
-
-
 
 
 
