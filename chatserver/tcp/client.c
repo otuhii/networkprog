@@ -4,9 +4,46 @@
 #include <stdlib.h>  
 #include <unistd.h>  
 #include <string.h> 
+#include <pthread.h>
+
+volatile int connection = 0;
 
 #define BUFFERSIZE 1024
 
+void* listenServer(void* arg)
+{
+
+  int csocket = *((int*)arg); 
+  char buffer[BUFFERSIZE];
+  while(connection)
+  {
+    int bytesReaded = read(csocket, buffer, sizeof(buffer));
+    if(bytesReaded)
+    {
+      buffer[bytesReaded] = '\0'; // Null-terminate the string
+
+      // Move the cursor to the beginning of the line and clear the input prompt
+      printf("\r\033[K"); // '\r' moves to the beginning, '\033[K' clears the line
+
+      // Print the message from the server
+      printf("Message from your friend: %s\n", buffer);
+            
+      // Reprint the input prompt for the user
+      printf("Enter msg to send: ");
+      fflush(stdout); 
+    }
+    else if (bytesReaded==0){
+      printf("Your friend disconnecte(((\n");
+      connection=0;
+      break;
+    }
+    else {
+      printf("error occured!! \n");
+      connection=0;
+      break;
+    }
+  }
+}
 
 
 void error(const char* msg){
@@ -18,11 +55,13 @@ int main(int argc, char* argv[])
 {
   //usage clientprogram <hostname> <port>
 
-  int csocket, hsocket;
+  int csocket;
   struct sockaddr_in serveraddr;
   const char *server_ip = argv[1];
   int port = atoi(argv[2]);
   char buffer[BUFFERSIZE];
+  
+  pthread_t listeningThread;  
 
 
   if (argc != 3)
@@ -49,11 +88,13 @@ int main(int argc, char* argv[])
   if (rc < 0) 
       error("connection to server failed");
 
-  printf("connected to server %s on port %");
-  
-  while(1)
-  {
+  connection = 1;
+  printf("connected to server %s on port %d");
 
+
+  pthread_create(&listeningThread, NULL, listenServer, (void*)&csocket);
+  while(connection)
+  {
     printf("Enter msg to send: ");
     bzero(buffer, BUFFERSIZE);
     fgets(buffer, BUFFERSIZE, stdin);
@@ -62,13 +103,7 @@ int main(int argc, char* argv[])
     if (n < 0)
       error("could not write to socket");
     
-    if(read(csocket, buffer, sizeof(buffer)))
-    {
-      printf("Message from your friend: %s", buffer);
-    }
-
-
   }
-
+  close(csocket);
   return 0;
 }

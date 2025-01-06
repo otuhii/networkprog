@@ -5,19 +5,58 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <pthread.h> 
+
+
 
 #define BACKLOG 5
 #define BUFFERSIZE 1024
 
 
 /*TO DO:
- * add maybe asynchronious processing 
  * maybe add a lot of users that can connect, try to make it via different devices 
  * maybe add some kind of ids for users
  *    --i can achieve that by using some structure and maybe sharing not just string but whole structre with name, and message
  * */
+void* handleFClient(void* args)
+{
+  char buffer[BUFFERSIZE];
+  int* sockets = (int*)args;
+  while(1)
+  {
+    int bytesReaded = read(sockets[0], buffer, BUFFERSIZE);
+    if (bytesReaded > 0)
+    {
+      printf("Received bytes: %i", bytesReaded);
+      printf("Message from first user: %s", buffer);
+    }
+    write(sockets[1], buffer, BUFFERSIZE);
+
+  }
+  close(sockets[0]);
+  pthread_exit(NULL);
+}
 
 
+void* handleSClient(void* args)
+{
+  char buffer[BUFFERSIZE];
+  int* sockets = (int*)args;
+  while (1)
+  {
+    int bytesReaded = read(sockets[1], buffer, BUFFERSIZE);
+    if (bytesReaded > 0)
+    {
+      printf("Received bytes: %i", bytesReaded);
+      printf("Message from second user: %s", buffer);
+    }
+    write(sockets[0], buffer, BUFFERSIZE);
+
+  }
+  close(sockets[0]);
+  pthread_exit(NULL);
+
+}
 
 void error(const char *msg)
 {
@@ -25,15 +64,18 @@ void error(const char *msg)
   exit(1);
 }
 
+
 int main(int argc, char *argv[])
 {
   //usage serverfilename <port>
 
-  int lSocket, firstcliSocket, secondcliSocket; //listening socket and socket for connected client
+  int listeningSocket; //listening socket and socket for connected client
+  int cSockets[2];
+
   int port;
   struct sockaddr_in serveraddr, clientaddr;
-  char buffer[BUFFERSIZE];
-
+  //threads in order to make our clients communicate asynchronically
+  pthread_t thread1, thread2;
 
   if (argc>1)
     port = atoi(argv[1]);
@@ -48,8 +90,8 @@ int main(int argc, char *argv[])
   serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
   //initializing listening socket
-  lSocket = socket(AF_INET, SOCK_STREAM, 0);
-  if (lSocket<0)
+  listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
+  if (listeningSocket<0)
   {
     error("socket creation failed");
   }
@@ -57,75 +99,47 @@ int main(int argc, char *argv[])
   //some cool thing to prevent error on binding "address already in use"
   //dont know how exactly it works but it looks useful so just put it here
   int optval = 1;
-  setsockopt(lSocket, SOL_SOCKET, SO_REUSEADDR, 
+  setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, 
 	     (const void *)&optval , sizeof(int));
 
   //binding it to specific port
-  int rc = bind(lSocket, (struct sockaddr*) &serveraddr, sizeof(serveraddr));
+  int rc = bind(listeningSocket, (struct sockaddr*) &serveraddr, sizeof(serveraddr));
   if (rc<0)
-    error("binding socket failed");
+    error("binding socket failed\n");
 
 
-  if (listen(lSocket, BACKLOG) < 0)
-    error("listening start failed");
+  if (listen(listeningSocket, BACKLOG) < 0)
+    error("listening start failed\n");
 
-  printf("Server listening port %hu", port);
-  
+  printf("Server listening port %hu\n", port);
   socklen_t clientlen = sizeof(clientaddr);
 
 
-  firstcliSocket = accept(lSocket, (struct sockaddr*)&clientaddr, &clientlen);
-  if (firstcliSocket < 0)
-    error("first client connection failed");
+  cSockets[0] = accept(listeningSocket, (struct sockaddr*)&clientaddr, &clientlen);
+  if (cSockets[0] < 0)
+    error("first client connection failed\n");
 
-  printf("First client connected succesfully");
+  printf("First client connected succesfull\n");
 
-  secondcliSocket = accept(lSocket, (struct sockaddr*)&clientaddr, &clientlen);
-  if (secondcliSocket<0)
-    error("second client connection failed");
+  cSockets[1] = accept(listeningSocket, (struct sockaddr*)&clientaddr, &clientlen);
+  if (cSockets[1]<0)
+    error("second client connection failed\n");
 
-  printf("Second client connected succesfully");
+  printf("Second client connected succesfully\n");
 
   //after succesfull connection of each client we can start chatting yay
 
+  pthread_create(&thread1, NULL, handleFClient, (void*)cSockets);
+  pthread_create(&thread2, NULL, handleSClient, (void*)cSockets); 
 
-  for(;;){
+  pthread_detach(thread1);
+  pthread_detach(thread2);
+  
+  for(;;){}
 
-    int bytesReaded = read(firstcliSocket, buffer, BUFFERSIZE);
-    if (bytesReaded > 0)
-    {
-      printf("Received bytes: %i", bytesReaded);
-      printf("Message from first user: %s", buffer);
-    }
-    write(secondcliSocket, buffer, BUFFERSIZE);
 
-    
-    bytesReaded = read(secondcliSocket, buffer, BUFFERSIZE);
-    if (bytesReaded >0)
-    {
-      printf("Received bytes: %i", bytesReaded);
-      printf("Message from second user: %s", buffer);
-    }
-    write(firstcliSocket, buffer, BUFFERSIZE);
-
-  }  
-
-  close(lSocket);
+  close(listeningSocket);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
