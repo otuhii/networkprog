@@ -19,7 +19,6 @@ typedef struct messageBlock{
 } messageBlock;
 
 /*TO DO:
- * add file transfer
  * maybe add a lot of users that can connect, try to make it via different devices 
  * */
 
