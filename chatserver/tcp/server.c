@@ -11,26 +11,36 @@
 
 #define BACKLOG 5
 #define BUFFERSIZE 1024
+#define NAMESIZE 64
 
+typedef struct messageBlock{
+  char username[NAMESIZE];
+  char messageBuffer[BUFFERSIZE];
+} messageBlock;
 
 /*TO DO:
+ * add file transfer
  * maybe add a lot of users that can connect, try to make it via different devices 
- * maybe add some kind of ids for users
- *    --i can achieve that by using some structure and maybe sharing not just string but whole structre with name, and message
  * */
+
+
 void* handleFClient(void* args)
 {
-  char buffer[BUFFERSIZE];
+  messageBlock message;
   int* sockets = (int*)args;
+
+
   while(1)
   {
-    int bytesReaded = read(sockets[0], buffer, BUFFERSIZE);
+    int bytesReaded = recv(sockets[0], &message, sizeof(message), 0);
     if (bytesReaded > 0)
     {
-      printf("Received bytes: %i", bytesReaded);
-      printf("Message from first user: %s", buffer);
+      printf("Received bytes: %i\n", bytesReaded);
+      printf("Message from %s: %s\n", message.username, message.messageBuffer);
+    
+      send(sockets[1], &message, sizeof(message), 0);
+
     }
-    write(sockets[1], buffer, BUFFERSIZE);
 
   }
   close(sockets[0]);
@@ -40,17 +50,18 @@ void* handleFClient(void* args)
 
 void* handleSClient(void* args)
 {
-  char buffer[BUFFERSIZE];
+  messageBlock message;
   int* sockets = (int*)args;
+
   while (1)
   {
-    int bytesReaded = read(sockets[1], buffer, BUFFERSIZE);
+    int bytesReaded = recv(sockets[1], &message, sizeof(message), 0);
     if (bytesReaded > 0)
     {
-      printf("Received bytes: %i", bytesReaded);
-      printf("Message from second user: %s", buffer);
+      printf("Received bytes: %i\n", bytesReaded);
+      printf("Message from %s: %s\n", message.username, message.messageBuffer);
     }
-    write(sockets[0], buffer, BUFFERSIZE);
+    send(sockets[0], &message, sizeof(message), 0);
 
   }
   close(sockets[0]);

@@ -9,26 +9,36 @@
 volatile int connection = 0;
 
 #define BUFFERSIZE 1024
+#define NAMESIZE 64
+
+//structure for authorized messaging 
+typedef struct messageBlock{
+  char username[NAMESIZE];
+  char messageBuffer[BUFFERSIZE];
+} messageBlock;
+
+
+void error(const char* msg){
+  perror(msg);
+  exit(1);
+}
+
 
 void* listenServer(void* arg)
 {
 
   int csocket = *((int*)arg); 
-  char buffer[BUFFERSIZE];
+  messageBlock message;
   while(connection)
   {
-    int bytesReaded = read(csocket, buffer, sizeof(buffer));
+    int bytesReaded = recv(csocket, &message, sizeof(message), 0);
     if(bytesReaded)
     {
-      buffer[bytesReaded] = '\0'; // Null-terminate the string
+      message.messageBuffer[BUFFERSIZE-1] = '\0'; 
 
       // Move the cursor to the beginning of the line and clear the input prompt
       printf("\r\033[K"); // '\r' moves to the beginning, '\033[K' clears the line
-
-      // Print the message from the server
-      printf("Message from your friend: %s\n", buffer);
-            
-      // Reprint the input prompt for the user
+      printf("Message from %s: %s\n", message.username, message.messageBuffer);
       printf("Enter msg to send: ");
       fflush(stdout); 
     }
@@ -46,10 +56,22 @@ void* listenServer(void* arg)
 }
 
 
-void error(const char* msg){
-  perror(msg);
-  exit(1);
+void startMessaging(int sSock, messageBlock* message)
+{
+  while(connection)
+  {
+    printf("Enter msg to send: ");
+    bzero(message->messageBuffer, BUFFERSIZE);
+    fgets(message->messageBuffer, BUFFERSIZE, stdin);
+    
+    message->messageBuffer[strcspn(message->messageBuffer, "\n")] = 0;
+
+    if(send(sSock, message, sizeof(*message), 0) == -1) {
+        error(" Error in sending message");
+    }
+  }
 }
+
 
 int main(int argc, char* argv[])
 {
@@ -63,6 +85,7 @@ int main(int argc, char* argv[])
   
   pthread_t listeningThread;  
 
+  messageBlock umessage;
 
   if (argc != 3)
     error("wrong arguments! \nusage clientprogram <hostname> <port>");
@@ -70,9 +93,6 @@ int main(int argc, char* argv[])
   csocket = socket(AF_INET, SOCK_STREAM, 0);
   if (csocket<0)
     error("user socket creation failed");
-
-  
-
 
   //server address structure init
   memset(&serveraddr, 0, sizeof(serveraddr)); 
@@ -87,23 +107,21 @@ int main(int argc, char* argv[])
   int rc = connect(csocket, (struct sockaddr *) &serveraddr, sizeof(serveraddr));
   if (rc < 0) 
       error("connection to server failed");
-
+  
   connection = 1;
-  printf("connected to server %s on port %d");
+
+  //setting username for structure
+  printf("enter your username: ");
+  bzero(umessage.username, NAMESIZE);
+  fgets(umessage.username, NAMESIZE, stdin);
+  umessage.username[strcspn(umessage.username, "\n")] = 0;
+  
+  printf("connected to server %s on port %d", server_ip, port);
 
 
   pthread_create(&listeningThread, NULL, listenServer, (void*)&csocket);
-  while(connection)
-  {
-    printf("Enter msg to send: ");
-    bzero(buffer, BUFFERSIZE);
-    fgets(buffer, BUFFERSIZE, stdin);
+  startMessaging(csocket, &umessage); 
 
-    int n = write(csocket, buffer, sizeof(buffer));
-    if (n < 0)
-      error("could not write to socket");
-    
-  }
   close(csocket);
   return 0;
 }
