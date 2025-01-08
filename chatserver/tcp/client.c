@@ -263,9 +263,9 @@ int main(int argc, char* argv[])
   
   threadListenArgs* info = malloc(sizeof(threadListenArgs));
   if (info == NULL) error("Memory allocation failed");
-  info.ftSock = ftsocket;
-  info.sSock = csocket;
-  info.ftThread = filetransferThread;
+  info->ftSock = ftsocket;
+  info->sSock = csocket;
+  info->ftThread = filetransferThread;
 
   //setting username for structure
   printf("enter your username: ");
