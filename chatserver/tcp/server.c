@@ -16,6 +16,10 @@
 //to do:
 //  -add multiple users handling
 //  -add some checking after receiving file, maybe hash(sha or some shit, would be cool if i can implement it by myself)
+// !!!!there is bug so  i can send only one file and then it just freezes and does not allow me send even message: it would be cool to fix that but i don't really care
+
+
+
 
 typedef struct messageBlock{
   char username[NAMESIZE];
