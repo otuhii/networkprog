@@ -227,6 +227,7 @@ void startMessaging(int sSock,int ftSock,pthread_t ftThread, messageBlock* messa
       printf("\nenter file to send: ");
       bzero(args->filename, NAMESIZE);
       fgets(args->filename, NAMESIZE, stdin);
+      args->filename[strcspn(args->filename, "\n")] = 0;
       args->sSock = ftSock;
       args->mode = 2;
       pthread_create(&ftThread, NULL, fileTransfer, args);
