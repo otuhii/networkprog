@@ -5,6 +5,8 @@
 #include <unistd.h>  
 #include <string.h> 
 #include <pthread.h>
+#include <errno.h>
+
 
 volatile int connection = 0;
 
@@ -158,11 +160,13 @@ void* listenServer(void* arg)
 {
   threadListenArgs *args = (threadListenArgs*)arg;
   messageBlock message;
+
+
   while(connection)
   {
     int bytesReaded = recv(args->sSock, &message, sizeof(message), 0);
   
-    if(bytesReaded)
+    if(bytesReaded>0)
     {
       if(strcmp(message.messageBuffer, "file") == 0)
       {
@@ -174,7 +178,7 @@ void* listenServer(void* arg)
       
         pthread_join(args->ftThread, NULL);
       }
-      else 
+      else if (strlen(message.messageBuffer) > 0) 
       {
         message.messageBuffer[BUFFERSIZE-1] = '\0'; 
 
@@ -191,11 +195,13 @@ void* listenServer(void* arg)
       break;
     }
     else {
-      printf("error occured!! \n");
+      printf("error occured!! %d\n", errno);
       connection=0;
       break;
     }
   }
+
+  return NULL;
 }
 
 
@@ -276,7 +282,7 @@ int main(int argc, char* argv[])
   printf("connected to server %s on port %d", server_ip, port);
 
 
-  pthread_create(&listeningThread, NULL, listenServer, (void*)&info);
+  pthread_create(&listeningThread, NULL, listenServer, (void*)info);
   startMessaging(csocket,ftsocket,filetransferThread, &umessage); 
 
   close(csocket);
