@@ -7,65 +7,31 @@
 #include <unistd.h>
 #include <pthread.h> 
 
-
-
 #define BACKLOG 5
 #define BUFFERSIZE 1024
 #define NAMESIZE 64
+#define SOCKETSN 2
+#define FILEBUFFERSIZE 8192
+
+//to do:
+//  -add multiple users handling
+//  -add some checking after receiving file, maybe hash(sha or some shit, would be cool if i can implement it by myself)
 
 typedef struct messageBlock{
   char username[NAMESIZE];
   char messageBuffer[BUFFERSIZE];
 } messageBlock;
 
-/*TO DO:
- * maybe add a lot of users that can connect, try to make it via different devices 
- * */
 
+typedef struct serverState {
+  int clientSockets[SOCKETSN];
+  int ftSockets[SOCKETSN];
+  int connectedClients;
+  pthread_mutex_t mutex;
+} serverState;
 
-void* handleFClient(void* args)
-{
-  messageBlock message;
-  int* sockets = (int*)args;
-
-
-  while(1)
-  {
-    int bytesReaded = recv(sockets[0], &message, sizeof(message), 0);
-    if (bytesReaded > 0)
-    {
-      printf("Received bytes: %i\n", bytesReaded);
-      printf("Message from %s: %s\n", message.username, message.messageBuffer);
-    
-      send(sockets[1], &message, sizeof(message), 0);
-
-    }
-
-  }
-  close(sockets[0]);
-  pthread_exit(NULL);
-}
-
-
-void* handleSClient(void* args)
-{
-  messageBlock message;
-  int* sockets = (int*)args;
-
-  while (1)
-  {
-    int bytesReaded = recv(sockets[1], &message, sizeof(message), 0);
-    if (bytesReaded > 0)
-    {
-      printf("Received bytes: %i\n", bytesReaded);
-      printf("Message from %s: %s\n", message.username, message.messageBuffer);
-    }
-    send(sockets[0], &message, sizeof(message), 0);
-
-  }
-  close(sockets[0]);
-  pthread_exit(NULL);
-
+serverState server = {
+  .connectedClients = 0
 }
 
 void error(const char *msg)
@@ -75,79 +41,219 @@ void error(const char *msg)
 }
 
 
+int serverSocketSetup(int port)
+{
+  int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+  if (serverSocket<0)
+    error("creation server socket failed");
+
+  struct sockaddr_in serverAddr;
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_addr.s_addr = INADDR_ANY;
+  serverAddr.sin_port = htons(port);
+
+  int opt = 1;
+  if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    error("setsockopt failed");
+  if (bind(serverSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0)
+    error("sever socket binding failed");
+  if (listen(serverSocket, 2) < 0)
+    error("listening failed");
+
+  return serverSocket;
+}
+
+
+void forwardMessage(messageBlock* message, int senderSocket)
+{
+  pthread_mutex_lock(&server.mutex);
+  for (int i = 0; i < CLIENTSN; i++)
+  {
+    if (server.clientSockets[i] != senderSocket && server.clientSockets[i]!=0)
+    {
+      if (send(server.clientSockets[i],message,sizeof(messageBlock), 0) < 0)
+      {
+        perror("error forwarding message");
+      }
+    }
+  }
+  pthread_mutex_unlock(&server.mutex);
+}
+
+
+void handleFileTransfer(int senderftSocket, int receiveftSocket)
+{
+  uint32_t filename_len;
+  char buffer[FILEBUFFERSIZE];
+  int n;
+
+  //filename operations
+  char filename[NAMESIZE];
+  if (recv(senderftSocket, &filename_len, sizeof(uint32_t), 0) <= 0)
+    return;
+  if (send(receiverftSocket, &filename_len, sizeof(uint32_t), 0) < 0)
+    return;
+  if(recv(senderftSocket, filename, filename_len, 0) <= 0)
+    return;
+  if (send(receiverftSocket, filename, filename_len, 0) < 0)
+    return;
+  ////////////////////////////////////////////////////////////////
+
+  //file 
+  while ((n = recv(senderftSocket, buffer, FILEBUFFERSIZE, 0)) > 0)
+  {
+    if (send(receiverftSocket, buffer, n, 0) < 0)
+      break;
+  }
+
+}
+
+
+void* handleClient(void* args)
+{
+  messageBlock message;
+  int* socket = *((int*)args);
+  free(arg);
+
+  while(1)
+  {
+    int bytesReaded = recv(clientSocket, &message, sizeof(message), 0);
+    if (bytesReaded <= 0)
+    {
+      printf("client disconnected\n");
+      break;
+    }
+
+    if (strcmp(message.messageBuffer, "file") == 0)
+    {
+      int senderIdx = -1;
+      int receiverIdx = -1;
+      pthread_mutex_lock(&server.mutex);
+      for (int i = 0; i < CLIENTSN; i++)
+      {
+        if (server.clientSockets[i] == clientSocket)
+          senderIdx = i;
+        else if (server.clientSockets[i] != 0)
+          receiverIdx = i;
+      }
+      pthread_mutex_unlock(&server.mutex);
+
+      if (senderIdx!=-1 && receiverIdx!=-1)
+      {
+        forwardMessage(&message, clientSocket);
+        handleFileTransfer(server.ftSockets[senderIdx], server.ftSockets[receiverIdx]);
+      }
+    }
+    else 
+      forwardMessage(&message, clientSocket);
+
+  }
+
+  pthread_mutex_lock(&server.mutex);
+  for (int i = 0; i < CLIENTSN)
+  {
+    if (server.clientSockets[i] == clientSocket)
+    {
+      close(server.clientSockets[i]);
+      close(server.ftSockets[i]);
+      server.clientSockets[i] = 0;
+      server.ftSockets[i] = 0;
+      server.connectedClients--;
+      break;
+    }
+  }
+
+  pthread_mutex_unlock(&server.mutex);
+
+
+  return NULL;
+}
+
 int main(int argc, char *argv[])
 {
   //usage serverfilename <port>
 
-  int listeningSocket; //listening socket and socket for connected client
+  int listeningSocket, ftSocket; //listening socket and socket for connected client, ft - file transfering
   int cSockets[2];
 
   int port;
-  struct sockaddr_in serveraddr, clientaddr;
   //threads in order to make our clients communicate asynchronically
   pthread_t thread1, thread2;
 
   if (argc>1)
-    port = atoi(argv[1]);
+    port = atoi(argv[1]);x
   else
     port = 8080;
 
 
-  //structure that represent server's address
-  memset(&serveraddr, 0, sizeof(serveraddr));
-  serveraddr.sin_family = AF_INET;
-  serveraddr.sin_port = htons(port);
-  serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  listeningSocket = setupServerSocket(port);
+  ftSocket = setupServerSocket(port+1);
 
-  //initializing listening socket
-  listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
-  if (listeningSocket<0)
+  printf("Server listening port %hu, files are shared with %hu port\n", port, port+1);
+    
+  //////////////////////////////////////////////////////////////
+  ///              CONNECTION OF ALL SOCKETS                  //
+  ///////////////////////////////////////////////////////////// 
+  for(;;)
   {
-    error("socket creation failed");
+    socklen_t clientlen = sizeof(clientaddr);
+    struct sockaddr_in clientAddr;
+
+    //accept main connection for messages 
+    int* clientSocket = malloc(sizeof(int));
+    if (clientSocket==NULL)
+      error("malloc for client socket cannot me created");
+
+    *clientSocket = accept(listeningSocket, (struct sockaddr*)&clientAddr, &clientLen);
+    if (*clientSocket<0)
+      error("acception failed");
+  
+
+    //accept file transfer connection
+    int filetransferSocket = accept(ftSocket, (struct sockaddr*)&clientAddr, &clientLen);
+    if (filetransferSocket < 0)
+      error("file transfer acception failed");
+
+    
+    pthread_mutex_lock(&server.mutex)
+    if (server.connected_clients >= CLIENTSN)
+    {
+      close(*clientSocket);
+      close(filetransferSocket);
+      free(clientSocket);
+      pthread_mutex_unlock(&server.mutex);
+      continue;
+    }
+
+    //storing all sockets with user connection to server structure
+    for (int i = 0; i < CLIENTSN; i++)
+    {
+      if (server.clientSockets[i] ==0)
+      {
+        server.clientSockets[i] = *clientSocket;
+        server.ftSockets[i] = filetranferSocket;
+        break;
+      }
+    }
+    server.connectedClients++;
+    pthread_mutex_unlock(&server.mutex);
+
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, handleClient, clientSocket) != 0)
+    {
+      perror("thread creation failed");
+      free("thread connection failed");
+      continue;
+    }
+    pthread_detach(thread);
+    printf("new client connected.")
+    
+
   }
 
-  //some cool thing to prevent error on binding "address already in use"
-  //dont know how exactly it works but it looks useful so just put it here
-  int optval = 1;
-  setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, 
-	     (const void *)&optval , sizeof(int));
 
-  //binding it to specific port
-  int rc = bind(listeningSocket, (struct sockaddr*) &serveraddr, sizeof(serveraddr));
-  if (rc<0)
-    error("binding socket failed\n");
-
-
-  if (listen(listeningSocket, BACKLOG) < 0)
-    error("listening start failed\n");
-
-  printf("Server listening port %hu\n", port);
-  socklen_t clientlen = sizeof(clientaddr);
-
-
-  cSockets[0] = accept(listeningSocket, (struct sockaddr*)&clientaddr, &clientlen);
-  if (cSockets[0] < 0)
-    error("first client connection failed\n");
-
-  printf("First client connected succesfull\n");
-
-  cSockets[1] = accept(listeningSocket, (struct sockaddr*)&clientaddr, &clientlen);
-  if (cSockets[1]<0)
-    error("second client connection failed\n");
-
-  printf("Second client connected succesfully\n");
-
-  //after succesfull connection of each client we can start chatting yay
-
-  pthread_create(&thread1, NULL, handleFClient, (void*)cSockets);
-  pthread_create(&thread2, NULL, handleSClient, (void*)cSockets); 
-
-  pthread_detach(thread1);
-  pthread_detach(thread2);
-  
-  for(;;){}
-
-
+  pthread_mutex_destroy(&server.mutex);
+  close(ftSocket);
   close(listeningSocket);
 }
 
