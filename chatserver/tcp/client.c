@@ -12,7 +12,7 @@ volatile int connection = 0;
 
 #define BUFFERSIZE 1024
 #define NAMESIZE 64
-#define FILEBUFFERSIZE 8192
+#define FILEBUFFERSIZE 32768
 
 
 //structure for authorized messaging 
