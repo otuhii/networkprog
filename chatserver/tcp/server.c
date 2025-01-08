@@ -10,7 +10,7 @@
 #define BACKLOG 5
 #define BUFFERSIZE 1024
 #define NAMESIZE 64
-#define SOCKETSN 2
+#define CLIENTSN 2
 #define FILEBUFFERSIZE 8192
 
 //to do:
@@ -24,15 +24,15 @@ typedef struct messageBlock{
 
 
 typedef struct serverState {
-  int clientSockets[SOCKETSN];
-  int ftSockets[SOCKETSN];
+  int clientSockets[CLIENTSN];
+  int ftSockets[CLIENTSN];
   int connectedClients;
   pthread_mutex_t mutex;
 } serverState;
 
 serverState server = {
   .connectedClients = 0
-}
+};
 
 void error(const char *msg)
 {
@@ -81,7 +81,7 @@ void forwardMessage(messageBlock* message, int senderSocket)
 }
 
 
-void handleFileTransfer(int senderftSocket, int receiveftSocket)
+void handleFileTransfer(int senderftSocket, int receiverftSocket)
 {
   uint32_t filename_len;
   char buffer[FILEBUFFERSIZE];
@@ -112,12 +112,12 @@ void handleFileTransfer(int senderftSocket, int receiveftSocket)
 void* handleClient(void* args)
 {
   messageBlock message;
-  int* socket = *((int*)args);
-  free(arg);
+  int clientSocket = *((int*)args);
+  free(args);
 
   while(1)
   {
-    int bytesReaded = recv(clientSocket, &message, sizeof(message), 0);
+      int bytesReaded = recv(clientSocket, &message, sizeof(message), 0);
     if (bytesReaded <= 0)
     {
       printf("client disconnected\n");
@@ -150,7 +150,7 @@ void* handleClient(void* args)
   }
 
   pthread_mutex_lock(&server.mutex);
-  for (int i = 0; i < CLIENTSN)
+  for (int i = 0; i < CLIENTSN; i++)
   {
     if (server.clientSockets[i] == clientSocket)
     {
@@ -181,13 +181,13 @@ int main(int argc, char *argv[])
   pthread_t thread1, thread2;
 
   if (argc>1)
-    port = atoi(argv[1]);x
+    port = atoi(argv[1]);
   else
     port = 8080;
 
 
-  listeningSocket = setupServerSocket(port);
-  ftSocket = setupServerSocket(port+1);
+  listeningSocket = serverSocketSetup(port);
+  ftSocket = serverSocketSetup(port+1);
 
   printf("Server listening port %hu, files are shared with %hu port\n", port, port+1);
     
@@ -196,27 +196,27 @@ int main(int argc, char *argv[])
   ///////////////////////////////////////////////////////////// 
   for(;;)
   {
-    socklen_t clientlen = sizeof(clientaddr);
     struct sockaddr_in clientAddr;
+    socklen_t clientlen = sizeof(clientAddr);
 
     //accept main connection for messages 
     int* clientSocket = malloc(sizeof(int));
     if (clientSocket==NULL)
       error("malloc for client socket cannot me created");
 
-    *clientSocket = accept(listeningSocket, (struct sockaddr*)&clientAddr, &clientLen);
+    *clientSocket = accept(listeningSocket, (struct sockaddr*)&clientAddr, &clientlen);
     if (*clientSocket<0)
       error("acception failed");
   
 
     //accept file transfer connection
-    int filetransferSocket = accept(ftSocket, (struct sockaddr*)&clientAddr, &clientLen);
+    int filetransferSocket = accept(ftSocket, (struct sockaddr*)&clientAddr, &clientlen);
     if (filetransferSocket < 0)
       error("file transfer acception failed");
 
     
-    pthread_mutex_lock(&server.mutex)
-    if (server.connected_clients >= CLIENTSN)
+    pthread_mutex_lock(&server.mutex);
+    if (server.connectedClients >= CLIENTSN)
     {
       close(*clientSocket);
       close(filetransferSocket);
@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
       if (server.clientSockets[i] ==0)
       {
         server.clientSockets[i] = *clientSocket;
-        server.ftSockets[i] = filetranferSocket;
+        server.ftSockets[i] = filetransferSocket;
         break;
       }
     }
@@ -242,11 +242,11 @@ int main(int argc, char *argv[])
     if (pthread_create(&thread, NULL, handleClient, clientSocket) != 0)
     {
       perror("thread creation failed");
-      free("thread connection failed");
+      free(clientSocket);
       continue;
     }
     pthread_detach(thread);
-    printf("new client connected.")
+    printf("new client connected.");
     
 
   }
