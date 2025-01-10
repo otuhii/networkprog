@@ -14,7 +14,7 @@
 
 //TODO:
 //  add routing
-
+//      nahhhh its really easy, i already had done this thing that i can server different page but i specify it on start of server, so i just need to make it client-side, maybe code is fuking garbage but i understand basic principe 
 
 
 void error(const char* message)
