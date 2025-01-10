@@ -8,6 +8,13 @@
 
 #define PORT 8080
 #define BUFFERSIZE 1024
+#define HTMLFILE 16384
+#define NAMESIZE 64
+
+
+//TODO:
+//  add routing
+
 
 
 void error(const char* message)
@@ -16,8 +23,29 @@ void error(const char* message)
   exit(1);
 }
 
+int getLocalPage(const char* filename, char* buffer)
+{
+  FILE* file;
+  int n;
 
-int handleConnection(int socket)
+  file = fopen(filename, "r");
+  if (file==NULL){
+    perror("can't open html page");
+    return -1;
+  }
+  if((n = fread(buffer, 1, HTMLFILE, file)) < 0){
+    perror("cant read from file");
+    return -1;
+  }
+  fclose(file);
+  
+
+  return n;
+}
+
+
+
+int handleConnection(int socket, char* filename)
 {
   char buffer[BUFFERSIZE]={0};
   char method[10]={0};
@@ -31,22 +59,47 @@ int handleConnection(int socket)
   }
 
   sscanf(buffer, "%s %s %s", method, path, version);
-  printf("METHOD: %s", method);
-  printf("PATH: %s", path);
-  printf("VERSION: %s", version);
-  
+  printf("METHOD: %s\n", method);
+  printf("PATH: %s\n", path);
+  printf("VERSION: %s\n", version);
+
 
   /// \r\n\r\n - blank line that separate body content from headers
   if (strcmp(method, "GET") == 0) {
-    char *response = "HTTP/1.1 200 OK\r\n"
-                        "Content-Type: text/html\r\n\r\n"
-                        "<html><body><h1>HELLO WORLD!</h1></body></html>";
-    if(write(socket, response, strlen(response)) < 0){
-      perror("cannot responce to socket");
+    char* filebuffer = (char*)malloc(HTMLFILE);
+
+    int bytesRead = getLocalPage(filename, filebuffer);
+    filebuffer[bytesRead] = '\0';
+    if (bytesRead < 0)
+    {
+      free(filebuffer);
       return -1;
     }
+    char* headers = "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: text/html\r\n\r\n";
+    size_t responceSize = bytesRead + strlen(headers) + 1;
+    char* responce = (char*)malloc(responceSize);
+    if (responce == NULL)
+    {
+      perror("memory allocation for responce buffer failed");
+      free(filebuffer);
+      return -1;
+    }
+    strcpy(responce, headers);
+    strcat(responce, filebuffer);
+    
+  
+    if(write(socket, responce, responceSize) < 0){
+      perror("cannot responce to socket");
+      free(filebuffer);
+      free(responce);
+      return -1;
+    }
+
+    free(filebuffer);
+    free(responce);
   }
-  else if (strcmp(method, "POSR") == 0) {
+  else if (strcmp(method, "POST") == 0) {
     char *body = strstr(buffer, "\r\n\r\n");
     if (body) {
         body += 4; // Move past the \r\n\r\n
@@ -86,12 +139,17 @@ int setupListeningSocket(int *lsocket)
 
 int main(int argc, char* argv[])
 {
-  char *hostname;
+  char *filename = (char*)malloc(NAMESIZE);
   int lsocket, csocket;
   struct sockaddr_in clientAddress;
   int clientAddressLength = sizeof(clientAddress);
   
-
+  
+  printf("enter filename of html file");
+  bzero(filename, NAMESIZE);
+  fgets(filename, NAMESIZE, stdin);
+  filename[strcspn(filename, "\n")] = 0;
+  
   if (setupListeningSocket(&lsocket) == -1)
     error("error occured");
 
@@ -106,7 +164,7 @@ int main(int argc, char* argv[])
     if ((csocket = accept(lsocket, (struct sockaddr*)&clientAddress, (socklen_t*)&clientAddressLength)) < 0)
       error("acception failed");
   
-    handleConnection(csocket);
+    handleConnection(csocket, filename);
 
     close(csocket);
   }
