@@ -7,6 +7,8 @@
 #include <arpa/inet.h>
 #include <net/ethernet.h>
 #include <unistd.h>
+#include <netdb.h>
+
 
 #define BUFFERSIZE 65536
 
@@ -41,12 +43,28 @@ void handlePacket(unsigned char* buffer, int buflen)
     source.sin_addr.s_addr = iph->saddr;
     dest.sin_addr.s_addr = iph->daddr;
 
-    ////////////////////////////////
-  
+    ////////////////////////////////////      
+    
+    char hostBuffer[NI_MAXHOST];
+    char serviceBuffer[NI_MAXSERV];
+    
 
     printf("\nIP PACKET\n");
-    printf("  |-Source IP       : %s\n", inet_ntoa(source.sin_addr));
-    printf("  |-Destination Ip  : %s\n", inet_ntoa(dest.sin_addr));
+
+
+    if (getnameinfo((struct sockaddr*)&source, sizeof(source), hostBuffer, sizeof(hostBuffer), serviceBuffer, sizeof(serviceBuffer), NI_NUMERICHOST))
+      printf("  |-Source IP       : %s:%s\n", hostBuffer, serviceBuffer);
+    else 
+      printf("  |-Source IP       : %s\n", inet_ntoa(source.sin_addr));
+
+
+
+    if (getnameinfo((struct sockaddr*)&dest, sizeof(dest), hostBuffer, sizeof(hostBuffer), serviceBuffer, sizeof(serviceBuffer), NI_NUMERICHOST))
+      printf("   |-Destination IP  : %s:%s\n", hostBuffer, serviceBuffer);
+    else
+      printf("  |-Destination IP  : %s\n", inet_ntoa(dest.sin_addr));
+
+
     printf("  |-Protocol        : %d\n", iph->protocol);
     printf("  |-TTL             : %d\n", iph->ttl);
     printf("  |-Total length    : %d\n", htons(iph->tot_len));
