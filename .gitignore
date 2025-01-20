@@ -3,3 +3,4 @@ chatserver/tcp/server
 chatserver/tcp/client
 chatserver/tcp/functionForFileTransfer.c
 shell
+bcr
