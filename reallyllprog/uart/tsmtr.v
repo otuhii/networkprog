@@ -27,7 +27,7 @@ module uartTx (
         //actual transmit of data
         if (bit_count < 8) begin 
           tx <= shift_reg[0];
-          shift_reg <= shift_reg >> 1l
+          shift_reg <= shift_reg >> 1;
           bit_count <= bit_count + 1;
         end else begin 
           tx <= 1;

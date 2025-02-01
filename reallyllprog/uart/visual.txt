@@ -1,0 +1,46 @@
+                    UART Transmitter
+                +-----------------------------+
+                |                             |
+Data In [7:0] -->|                             |--> TX (Serial Out)
+Start Signal -->|        Control Logic        |
+                |       + Shift Register      |
+                |       + Bit Counter         |
+                |                             |
+                +-----------------------------+
+
+CLK      : _|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+Start    : _____________|‾|________________________________
+TX       : 1 1 1 1 0 [D0][D1][D2][D3][D4][D5][D6][D7] 1 1 1
+          | Idle |Start|------ Data Bits ------|Stop| Idle
+
+
+
+                    UART Receiver
+                +-----------------------------+
+                |                             |
+RX (Serial In) -->|                             |--> Data Out [7:0]
+                |        Control Logic        |
+                |       + Shift Register      |
+                |       + Bit Counter         |
+                |                             |
+                +-----------------------------+
+
+
+CLK      : _|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+RX       : 1 1 0 [D0][D1][D2][D3][D4][D5][D6][D7] 1 1 1 1 1
+          | Idle |Start|------ Data Bits ------|Stop| Idle
+Data Out : ___________________________[D7:0]___________
+Done     : _____________________________|‾|___________
+
+
+
+          Transmitter                          Receiver
+          +-----------+                        +-----------+
+Data -->  |           | --Serial (TX)--> (RX)--|           | --> Data
+Start --> |  UART_TX  |                        |  UART_RX  |
+          +-----------+                        +-----------+
+
+
+- The transmitter and receiver are state machines with clear transitions (idle → start → data → stop).  
+- The shift_reg is critical for serializing/deserializing data.  
+
