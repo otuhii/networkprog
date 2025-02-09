@@ -38,3 +38,27 @@ so the most significant and interestring part is in work of trasmitter
     -first of all it sends one high signal and when it is ready to send data, sends low signal(0) and then starts to send data bits
     -after sending all bits it sends high signal
 
+
+
+
+
+1. **Основна ідея MMIO**:
+   - Периферійні пристрої доступні через адресний простір пам’яті.
+
+   - Процесор читає/записує дані в регістри пристроїв за певними адресами.
+
+
+2. **Як це використовується в UART**:
+   - Регістри UART (дані, статус, керування) мають свої адреси.
+
+   - Процесор взаємодіє з UART через ці регістри.
+
+
+3. **Semihosting**:
+   - Це спосіб взаємодії мікроконтролера/FPGA з хост-машиною через UART.
+   - Використовується для налагодження або введення/виведення даних.
+
+
+
+
+
