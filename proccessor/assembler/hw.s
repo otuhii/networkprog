@@ -1,6 +1,7 @@
 .data 
 
-message: .ascii "hello, world!\n"
+message:
+  .ascii "hello, world!\n"
 
 len = . - message
 
