@@ -1,144 +1,218 @@
 #for simple arm hello world program
 from ops import dpis, sdts, regs, swis
-
+from dataclasses import dataclass
+from typing import Optional, Union, List
+import re
 
 #garbage arithmetic
 #todo: fix offsets, fix arithmetic label function, convertation to binary 
 
 
+
+@dataclass
+class Label:
+    name: Optional[str] = None
+    size : int = 0
+    data : Optional[Union[int, List[int]]] = None
+    offset : int = 0
+    isGlobal : bool = False
+    section : Optional[str] = None
+
+@dataclass
+class Section:
+    name : Optional[str] = None
+    startOffset : Optional[int] = None
+    size : int = 0
+
+
 class Assembler:
     def __init__(self, filename):
-        self.labels = {}
-        self.sections = {}
-        
-        self.currentLabel = None
-        self.currentSection = None
-
-        #section syntax - name : {
-        #                        size : 00,
-        #                        isGlobal : 11
-        #                       }
-
+        self.labels = []
+        self.sections = []
 
         self.offset = 0
+
+        self.currentLabel = None
+        self.currentSection = None
+        self.INSTRUCTION_SIZE = 4 
         
         with open(filename, "r") as f:
             self.code = f.readlines()
         
 
 
-    def processSections(self, line):
+    def processSectionsFP(self, line):
         sectionName = line.split(".")[1]
-        if "global" in sectionName: #then its not section
-            labelName = sectionName.split(" ")[1]
-            if labelName in self.labels:
-                self.labels[labelName]["isGlobal"] = 1 
+        if 'ascii' not in line:
+            if "global" in sectionName: #then its not section
+                globalLabelName = sectionName.split(" ")[1]           
+                for label in self.labels:
+                    if label.name == globalLabelName:
+                        label.isGlobal = True
+                        return
+                self.labels.append(Label(name=globalLabelName, isGlobal=True))
             else:
-                self.labels[labelName] = {
-                            "data" : None,
-                            "offset" : None,
-                            "isGlobal" : 1
-                        }
-        else:
-            self.currentSection = sectionName   
-            self.sections[sectionName] = bin(self.offset)
+                if len(self.sections) != 0:
+                    for sec in self.sections:
+                        if sec.name == sectionName:
+                            print("error! section with this mame already exists")
+                            return
+                self.sections.append(Section(sectionName, self.offset))
+                
 
+    def processSectionsSP(self, line):
+        sectionName = line.split('.')[1]
+        for i, section in enumerate(self.sections):
+            if section.name == sectionName:
+                self.currentSection = i
 
-        self.offset += 4
-        return
-       
 
     
-    
-    def processLabel(self, line):
-        labelName = line.split(":")[0]
-        self.currentLabel = labelName
-        if labelName in self.labels: 
-            if self.labels[labelName]["offset"] is not None:
-                print("error!!") # handle this appropriately in future
-            else:
-                self.labels[labelName]["offset"] = self.offset
+    def processLabelFP(self, line):
+        labelName = line.split(":")[0].strip()
+        for label in self.labels:
+            if label.name == labelName:
+                label.offset = self.offset
+                return
+        self.labels.append(Label(name=labelName, offset=self.offset))
 
-        else:
-            self.labels[labelName] = {
-                        "data" : None,
-                        "offset" : self.offset,
-                        "isGlobal" : 0
-                    }
-            
 
-        self.offset += 4
         return 
-    
 
-    def processLabelArith(self, line):
-        line = line.split(" ")
-        label = line[0]
-        l = line[-1]
-        if self.labels[l]["data"] is not None:
-            #if self.labels[l]["data"] is list: #lets say that list always means ascii
-            self.labels[label] = self.offset - len(self.labels[l]["data"])
-            #i can add some values support but idk 
-        
+    def processLabelSP(self, line):
+        labelName = line.split(":")[0].strip()
+        for i, label in enumerate(self.labels):
+            if label.name == labelName:
+                self.currentLabel = i
 
 
-    
-    def processDPI(self, line):
-        tokens = line.split(" ")
-
-
-
-    def processSDT(self, line):
-        tokens = line.split(" ")
-
-
-
-    def processAscii(self, line):
-        string = line.split(" ")[-1]
-        asciiString = list(string.encode('ascii'))
-
-        if self.labels[self.currentLabel]["data"] != None:
-            print("error") #handle this appropriately in future
-            return
-        else:
-            self.labels[self.currentLabel]["data"] = asciiString;
-        
-
-        self.offset += len(asciiString)
-        return
-
-
-    def parseFile(self):
+    def firstPass(self):
+        print("FIRST PASS")
         for line in self.code:
+            print(f" {self.offset} : {line}\n\n")
+            
             line = line.strip("\n").strip()
                 
-            if 'ascii' in line:
-                self.processAscii(line)
-                continue
-            
-            if ". - " in line:
-                self.processLabelArith(line)
-                continue
-
             if line.startswith("."):
-                self.processSections(line)
+                self.processSectionsFP(line)
                 continue
 
             if line.endswith(":"):
-                self.processLabel(line)
+                self.processLabelFP(line)
+                continue
+            
+
+    def secondPass(self):
+        print("===========================================")
+        print("SECOND PASS")
+        for line in self.code:
+            print(f" {self.offset} : {line}\n\n")
+
+            if 'ascii' in line:
+                self.processAscii(line)
+                continue
+
+            line = line.strip("\n").strip()
+
+    
+            if '= . -' in line:
+                self.processAssign(line)
+                continue
+                
+            if line.startswith("."):
+                self.processSectionsSP(line)
+                continue
+
+            if line.endswith(":"):
+                self.processLabelSP(line)
                 continue
 
             for op in dpis:
                 if op in line:
                     self.processDPI(line)
-                    continue
             
             for op in sdts:
                 if op in line:
                     self.processSDT(line)
-                    continue
-            
-            print(f"{self.currentSection} {self.currentLabel} || {self.offset} : {line}\n\n")
+
+            for op in swis:
+                if op in line:
+                    self.processSWI(line)
+
+
+
+
+    def parseFile(self):
+        self.firstPass()
+
+        self.offset = 0
+        self.currentSection = None
+        self.currentLabel = None
+
+        self.secondPass()
+
+    
+    #second pass
+    def processAscii(self, line: str):
+        match = re.search(r'"([^"]*)"', line) #some fancy regex string detection
+        if not match:
+            raise SyntaxError(f"Invalid ASCII string format in line: {line}")
+        
+        try:
+            string = bytes(match.group(1), 'utf-8').decode('unicode-escape').encode('ascii')
+            asciiData = list(string)
+        except UnicodeError as e:
+            raise ValueError(f"Invalid characters in ASCII string: {e}")
+        
+        # Find all labels at current offset
+        currentLabelsIdxs = [
+            i for i, label in enumerate(self.labels)
+            if label.offset == self.offset
+        ]
+    
+        if not currentLabelsIdxs:
+            raise ValueError(f"No label found for ASCII data: {line}")
+    
+        padding = (4 - (len(asciiData) % 4)) % 4
+        alignedAsciiData = asciiData + [0] * padding
+
+        for idx in currentLabelsIdxs:
+            self.labels[idx].data = alignedAsciiData
+            self.labels[idx].size = len(asciiData)
+        
+        self.offset += len(alignedAsciiData)
+
+
+
+    #for var = . - var1 calculation
+    #fix hardcoded . symbol
+    #i should definitely rewrite this function
+    def processAssign(self, line):
+        line = line.split(" ")
+        label = line[0]
+        result = None
+        label2Name = line[-1]
+        for l in self.labels:
+            if l.name == label2Name:
+                #its actually really dumb and unconvenient but idgaf
+                result = l.size - l.offset
+        
+        if result != None:
+            self.labels.append(Label(label, data=result))
+        else:
+            print("error processing assigment")
+            return
+
+
+    def processDPI(self, line):
+        self.offset += self.INSTRUCTION_SIZE
+        self.sections[self.currentLabel].size += self.INSTRUCTION_SIZE
+    def processSDT(self, line):
+        self.offset += self.INSTRUCTION_SIZE
+        self.sections[self.currentLabel].size += self.INSTRUCTION_SIZE
+    def processSWI(self, line):
+        self.offset += self.INSTRUCTION_SIZE
+        self.sections[self.currentLabel].size += self.INSTRUCTION_SIZE
 
 
     def debug(self):
