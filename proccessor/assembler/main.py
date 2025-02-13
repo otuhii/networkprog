@@ -50,7 +50,7 @@ class Assembler:
                     if label.name == globalLabelName:
                         label.isGlobal = True
                         return
-                self.labels.append(Label(name=globalLabelName, isGlobal=True))
+                self.labels.append(Label(name=globalLabelName, isGlobal=True, offset=self.offset))
             else:
                 if len(self.sections) != 0:
                     for sec in self.sections:
@@ -165,21 +165,16 @@ class Assembler:
             raise ValueError(f"Invalid characters in ASCII string: {e}")
         
         # Find all labels at current offset
-        currentLabelsIdxs = [
-            i for i, label in enumerate(self.labels)
-            if label.offset == self.offset
-        ]
     
-        if not currentLabelsIdxs:
-            raise ValueError(f"No label found for ASCII data: {line}")
     
         padding = (4 - (len(asciiData) % 4)) % 4
         alignedAsciiData = asciiData + [0] * padding
 
-        for idx in currentLabelsIdxs:
-            self.labels[idx].data = alignedAsciiData
-            self.labels[idx].size = len(asciiData)
+        self.labels[self.currentLabel].data = alignedAsciiData
+        self.labels[self.currentLabel].size = len(asciiData)
         
+
+        self.sections[self.currentSection].size += len(alignedAsciiData)
         self.offset += len(alignedAsciiData)
 
 
@@ -198,7 +193,7 @@ class Assembler:
                 result = l.size - l.offset
         
         if result != None:
-            self.labels.append(Label(label, data=result))
+            self.labels.append(Label(name=label, data=result, offset=self.offset))
         else:
             print("error processing assigment")
             return
