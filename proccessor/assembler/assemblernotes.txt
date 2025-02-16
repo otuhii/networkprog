@@ -1,178 +1,89 @@
-Let me break down the **two-pass assembler process** in detail, showing exactly what happens during each pass, using your ARM assembly program as an example. I'll provide the **input** (what the assembler sees) and the **output** (what the assembler produces) for each pass.
+Let's break down each problem and explain how to solve it conceptually:
 
 ---
 
-### **First Pass: Symbol Resolution and Address Calculation**
-
-#### **Goal**:
-The assembler builds a **symbol table** and calculates memory addresses for all labels and symbols. It also processes directives like `.data` and `.text`.
-
-#### **Input**:
-Your original assembly code:
-```assembly
-.data
-message:
-    .ascii "Hello, World!\n"
-len = . - message
-
-.text
-.global _start
-_start:
-    mov r0, #1
-    ldr r1, =message
-    mov r2, #14
-    mov r7, #4
-    svc #0
-
-    mov r0, #0
-    mov r7, #1
-    svc #0
-```
-
-#### **Actions Performed**:
-1. **Initialize memory counters**:
-   - `.data` section starts at address `0x00000000`
-   - `.text` section starts at address `0x00010000`
-
-2. **Process `.data` section**:
-   - Assign `message` to address `0x00000000`
-   - Calculate `len = . - message`:
-     - `.` (current location counter) = `0x0000000E` (14 bytes for "Hello, World!\n")
-     - `len = 0x0000000E - 0x00000000 = 14`
-
-3. **Process `.text` section**:
-   - Assign `_start` to address `0x00010000`
-   - Calculate instruction sizes:
-     - Each ARM instruction is 4 bytes
-     - Total `.text` section size = 9 instructions × 4 bytes = 36 bytes
-
-4. **Build symbol table**:
-   | Symbol    | Address/Value      | Notes                          |
-   |-----------|--------------------|--------------------------------|
-   | message   | 0x00000000         | Start of `.data` section       |
-   | len       | 14                 | Calculated value               |
-   | _start    | 0x00010000         | Start of `.text` section       |
-
-#### **Output of First Pass**:
-- **Symbol Table**:
-  ```plaintext
-  message: 0x00000000
-  len:     14
-  _start:  0x00010000
-  ```
-
-- **Memory Layout**:
-  ```plaintext
-  .data section (0x00000000):
-      "Hello, World!\n" (14 bytes)
-
-  .text section (0x00010000):
-      _start: mov r0, #1
-              ldr r1, =message
-              mov r2, #14
-              mov r7, #4
-              svc #0
-              mov r0, #0
-              mov r7, #1
-              svc #0
-  ```
+### **1. First Pass Doesn't Calculate Offsets**
+**Problem**: The first pass isn’t simulating the layout of the program. All offsets stay at `0`, making labels/sections overlap incorrectly.  
+**Solution**:  
+- During the first pass, **simulate advancing the offset** for:  
+  - Data directives (e.g., `.ascii` strings).  
+  - Instructions (assume 4 bytes per ARM instruction).  
+  - Alignment padding (e.g., after `.data` to align `.text`).  
+- **Do not generate code** in the first pass—just track offsets for symbols.
 
 ---
 
-### **Second Pass: Machine Code Generation**
-
-#### **Goal**:
-The assembler generates the actual machine code, resolves symbolic references, and writes the final binary output.
-
-#### **Input**:
-- The original assembly code (same as above).
-- The symbol table and memory layout from the first pass.
-
-#### **Actions Performed**:
-1. **Generate machine code**:
-   - Convert each instruction to its binary representation.
-   - Resolve symbolic references using the symbol table.
-
-2. **Handle pseudo-instructions**:
-   - `ldr r1, =message` is converted to a PC-relative load:
-     ```assembly
-     ldr r1, [pc, #offset]  ; Load address of message from literal pool
-     ```
-
-3. **Create literal pool**:
-   - The assembler adds a literal pool (a block of data) at the end of the `.text` section to store constants like the address of `message`.
-
-4. **Write output**:
-   - Generate the final binary file (ELF format for Linux).
-
-#### **Output of Second Pass**:
-- **Machine Code**:
-  ```plaintext
-  .text section (0x00010000):
-      Address   | Machine Code | Assembly
-      -----------------------------------
-      0x00010000 | e3a00001     | mov r0, #1
-      0x00010004 | e59f1010     | ldr r1, [pc, #16]  ; Load message address
-      0x00010008 | e3a0200e     | mov r2, #14
-      0x0001000c | e3a07004     | mov r7, #4
-      0x00010010 | ef000000     | svc #0
-      0x00010014 | e3a00000     | mov r0, #0
-      0x00010018 | e3a07001     | mov r7, #1
-      0x0001001c | ef000000     | svc #0
-      0x00010020 | 00000000     | Literal pool: address of message (0x00000000)
-  ```
-
-- **Data Section**:
-  ```plaintext
-  .data section (0x00000000):
-      48 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00  ; "Hello, World!\n"
-  ```
-
-- **Final Binary Layout**:
-  ```plaintext
-  ELF Header
-  Section Headers:
-      .text: 0x00010000, size 36 bytes
-      .data: 0x00000000, size 14 bytes
-  Symbol Table:
-      message: 0x00000000
-      len:     14
-      _start:  0x00010000
-  ```
+### **2. `len = . - message` is Broken**
+**Problem**: `len` resolves to `16` (padded size) instead of `14` (actual string length).  
+**Solution**:  
+- Calculate `len` **before** adding alignment padding.  
+  - When parsing `len = . - message`, use the current offset *before padding* as the value.  
+- Store `len` as a label with the correct value (`14`), not the padded offset.
 
 ---
 
-### **Key Differences Between Passes**
-
-| **Aspect**            | **First Pass**                          | **Second Pass**                     |
-|------------------------|-----------------------------------------|-------------------------------------|
-| **Goal**              | Build symbol table, calculate addresses | Generate machine code, resolve refs |
-| **Input**             | Assembly code                          | Assembly code + symbol table        |
-| **Output**            | Symbol table, memory layout             | Machine code, binary file           |
-| **Symbol Resolution** | Assign addresses to labels              | Replace symbols with addresses      |
-| **Directives**        | Process `.data`, `.text`, etc.          | Generate sections in binary         |
-| **Pseudo-Instructions** | None                                  | Convert to real instructions        |
-
----
-
-### **Why Two Passes Are Necessary**
-
-1. **Forward References**:
-   - If a label is used before it's defined (e.g., a branch to a later label), the assembler needs to know its address in advance.
-
-2. **Address Calculation**:
-   - The assembler needs to know the size of each section to assign correct addresses.
-
-3. **Literal Pool Placement**:
-   - The assembler needs to know where to place constants like the address of `message`.
+### **3. Section Handling is Incorrect**
+**Problem**: `.data` and `.text` both start at offset `0`.  
+**Solution**:  
+- Track the **end of each section** during the first pass.  
+  - Example: After `.data` ends at offset 14, add 2 bytes of padding.  
+  - `.text` should start at offset 16 (aligned to 16 bytes).  
+- Update `Section` metadata:  
+  - `.data`: `startOffset=0`, `size=16` (14 bytes data + 2 padding).  
+  - `.text`: `startOffset=16`.
 
 ---
 
-### **Summary of Outputs**
+### **4. Padding Affects `len`**
+**Problem**: Padding is added to `.ascii` *after* `len` is calculated.  
+**Solution**:  
+- Process the `.ascii` string.  
+- Calculate `len = . - message` **immediately after the string**.  
+- Add padding to align the next section.  
 
-| **Pass**      | **Input**                          | **Output**                          |
-|---------------|------------------------------------|-------------------------------------|
-| **First Pass** | Assembly code                     | Symbol table, memory layout         |
-| **Second Pass**| Assembly code + symbol table      | Machine code, binary file           |
+---
 
-This two-pass approach ensures that all symbols are resolved correctly and the final binary is generated with the correct addresses and machine code.
+### **5. Label Metadata is Invalid**
+**Problem**: `_start` (a code label) has `.data` content.  
+**Solution**:  
+- **Separate data and code labels**:  
+  - Labels in `.data` (e.g., `message`) store data bytes.  
+  - Labels in `.text` (e.g., `_start`) track code offsets.  
+- Set `_start.offset` to the start of `.text` (offset 16), not `0`.
+
+---
+
+### **6. Instruction Processing is Incomplete**
+**Problem**: Instructions like `mov` don’t affect offsets correctly.  
+**Solution**:  
+- In the first pass, **simulate instruction sizes**:  
+  - For every instruction (e.g., `mov`, `ldr`), increment `offset` by `4` bytes.  
+- In the second pass, generate machine code (optional but recommended for correctness).
+
+---
+
+### **7. Global Label Handling**
+**Problem**: `.global _start` assigns `offset=0` instead of the `.text` start.  
+**Solution**:  
+- When processing `.global`, link the label to its **actual section offset**:  
+  - During the first pass, `_start` should resolve to `.text`’s start offset (16).  
+- Ensure labels are marked as global *after* their offsets are calculated.
+
+---
+
+### **Key Workflow Fixes**
+1. **First Pass**:
+   - Simulate advancing `offset` for all data/instructions.  
+   - Track section offsets and alignment.  
+   - Resolve symbol addresses (e.g., `message`, `len`, `_start`).  
+
+2. **Second Pass**:
+   - Generate machine code (encode instructions).  
+   - Apply padding where needed.  
+   - Finalize label metadata with correct offsets/sizes.  
+
+3. **Testing**:
+   - Verify `message` starts at `0`, `len=14`, `.text` starts at `16`.  
+   - Check that `_start` points to the first instruction in `.text`.
+
+By addressing these issues systematically, your assembler will correctly handle alignment, symbol resolution, and section layout.

@@ -27,6 +27,8 @@ class Section:
     size : int = 0
     padding : int = 0 #update on end of section
 
+
+#i could do labels and sections not array but dict and it would be more efficient i guess but i don't have much desire to rewrite it
 class Assembler:
     def __init__(self, filename):
         self.labels = []
@@ -41,6 +43,10 @@ class Assembler:
         with open(filename, "r") as f:
             self.code = f.readlines()
         
+        self.processedCode = {}
+
+
+
 
 
     def processSections(self, line):
@@ -101,70 +107,35 @@ class Assembler:
 
 
 
+    #addressing and stuff
     def firstPass(self):
-        print("FIRST PASS")
         for line in self.code:
-            print(f" {self.offset} : {line}\n\n")
+            line = line.strip("\n").strip()
+            
+            self.processedCode[self.offset] = line
 
             if 'ascii' in line:
                 self.processAscii(line)
-                continue
-                
-            line = line.strip("\n").strip()
+                continue    
             
             if not line:
                 continue
 
-            if '=' in line and ". -" in line:
+            elif '=' in line and ". -" in line:
                 self.processAssign(line)
                 continue
 
-            if line.startswith("."):
+            elif line.startswith("."):
                 self.processSections(line)
                 continue
 
-            if line.endswith(":"):
+            elif line.endswith(":"):
                 self.processLabel(line)
                 continue
-            
-            for op in dpis:
-                if op in line:
-                    self.processDPI(line)
-            
-            for op in sdts:
-                if op in line:
-                    self.processSDT(line)
-
-            for op in swis:
-                if op in line:
-                    self.processSWI(line)
-
-
-    def secondPass(self):
-        for line in self.code:
-            print(f" {self.offset} : {line}\n\n")
-
-            line = line.strip("\n").strip()
-
-            if line.startswith("."):
-                self.processSectionsSP(line)
-                continue
-
-            if line.endswith(":"):
-                self.processLabelSP(line)
-                continue
-
-            for op in dpis:
-                if op in line:
-                    self.processDPI(line)
-            
-            for op in sdts:
-                if op in line:
-                    self.processSDT(line)
-
-            for op in swis:
-                if op in line:
-                    self.processSWI(line)
+            else:
+                self.offset += self.INSTRUCTION_SIZE
+                if self.currentSection is not None:
+                    self.sections[self.currentSection].size += self.INSTRUCTION_SIZE
 
 
 
@@ -212,13 +183,25 @@ class Assembler:
                     self.labels.append(Label(
                         name=assignTo,
                         data=result,
-                        section=self.sections[self.currentSection]
+                        section=self.sections[self.currentSection],
+                        offset = self.offset
                     ))
                     return
                     
             raise ValueError(f"Referenced label {labelName} not found")
 
     
+
+
+    def tokenize(self):
+        self.code = None
+        pass
+    
+
+
+
+
+
 
 
     def parseFile(self):
@@ -228,25 +211,14 @@ class Assembler:
         self.currentSection = None
         self.currentLabel = None
 
-        #self.secondPass()
-
-
-
-    def processDPI(self, line):
-        self.offset += self.INSTRUCTION_SIZE
-        self.sections[self.currentSection].size += self.INSTRUCTION_SIZE
-    def processSDT(self, line):
-        self.offset += self.INSTRUCTION_SIZE
-        self.sections[self.currentSection].size += self.INSTRUCTION_SIZE
-    def processSWI(self, line):
-        self.offset += self.INSTRUCTION_SIZE
-        self.sections[self.currentSection].size += self.INSTRUCTION_SIZE
+        self.tokenize()
 
 
     def debug(self):
+        print(self.processedCode)
         print(self.sections)
         print(self.labels)
-            
+                    
 
 
 if __name__ == "__main__":
