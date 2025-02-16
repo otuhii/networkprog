@@ -1,89 +1,178 @@
-Let's break down each problem and explain how to solve it conceptually:
+To convert your ARM assembly code into binary, you need to translate each instruction into its corresponding 32-bit ARM machine code. Here's how to do it step by step:
 
 ---
 
-### **1. First Pass Doesn't Calculate Offsets**
-**Problem**: The first pass isn’t simulating the layout of the program. All offsets stay at `0`, making labels/sections overlap incorrectly.  
-**Solution**:  
-- During the first pass, **simulate advancing the offset** for:  
-  - Data directives (e.g., `.ascii` strings).  
-  - Instructions (assume 4 bytes per ARM instruction).  
-  - Alignment padding (e.g., after `.data` to align `.text`).  
-- **Do not generate code** in the first pass—just track offsets for symbols.
+### **1. ARM Instruction Encoding**
+ARM instructions are 32-bit wide. Each instruction has a specific encoding format depending on its type (e.g., `mov`, `ldr`, `svc`). Below are the formats for the instructions in your code:
 
 ---
 
-### **2. `len = . - message` is Broken**
-**Problem**: `len` resolves to `16` (padded size) instead of `14` (actual string length).  
-**Solution**:  
-- Calculate `len` **before** adding alignment padding.  
-  - When parsing `len = . - message`, use the current offset *before padding* as the value.  
-- Store `len` as a label with the correct value (`14`), not the padded offset.
+### **2. Instruction Formats**
+#### **`mov Rd, #imm`**
+- **Format**: `MOV{cond} Rd, #imm`
+- **Encoding**:
+  ```
+  31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+  | cond | 0 0 1 | opcode | S | Rn | Rd | imm12 |
+  ```
+  - `cond`: Condition code (use `1110` for unconditional).
+  - `opcode`: `1101` for `MOV`.
+  - `S`: Set flags (0 for no flags).
+  - `Rn`: Source register (0 for `mov`).
+  - `Rd`: Destination register.
+  - `imm12`: 12-bit immediate value.
+
+#### **`ldr Rd, =label`**
+- **Format**: `LDR{cond} Rd, [PC, #offset]`
+- **Encoding**:
+  ```
+  31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+  | cond | 0 1 0 | P | U | B | W | L | Rn | Rd | imm12 |
+  ```
+  - `cond`: Condition code (use `1110` for unconditional).
+  - `P`: Pre-indexing (1).
+  - `U`: Up (1 for positive offset).
+  - `B`: Byte/word (0 for word).
+  - `W`: Writeback (0).
+  - `L`: Load (1 for `ldr`).
+  - `Rn`: Base register (`PC` for `ldr =label`).
+  - `Rd`: Destination register.
+  - `imm12`: 12-bit offset.
+
+#### **`svc #imm`**
+- **Format**: `SVC{cond} #imm`
+- **Encoding**:
+  ```
+  31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+  | cond | 1 1 1 1 | imm24 |
+  ```
+  - `cond`: Condition code (use `1110` for unconditional).
+  - `imm24`: 24-bit immediate value.
 
 ---
 
-### **3. Section Handling is Incorrect**
-**Problem**: `.data` and `.text` both start at offset `0`.  
-**Solution**:  
-- Track the **end of each section** during the first pass.  
-  - Example: After `.data` ends at offset 14, add 2 bytes of padding.  
-  - `.text` should start at offset 16 (aligned to 16 bytes).  
-- Update `Section` metadata:  
-  - `.data`: `startOffset=0`, `size=16` (14 bytes data + 2 padding).  
-  - `.text`: `startOffset=16`.
+### **3. Binary Conversion**
+Here’s how to convert each instruction in your code:
+
+#### **`mov r0, #1`**
+- **Opcode**: `MOV`
+- **Rd**: `r0` (0)
+- **imm12**: `1`
+- **Binary**:
+  ```
+  1110 001 1101 0 0000 0000 000000000001
+  ```
+  - Hex: `0xe3a00001`
+
+#### **`ldr r1, =message`**
+- **Opcode**: `LDR`
+- **Rd**: `r1` (1)
+- **Rn**: `PC` (15)
+- **Offset**: Address of `message` relative to `PC`.
+- **Binary**:
+  ```
+  1110 010 1 1 0 0 1 1111 0001 <offset>
+  ```
+  - Hex: Depends on the address of `message`.
+
+#### **`ldr r2, =len`**
+- **Opcode**: `LDR`
+- **Rd**: `r2` (2)
+- **Rn**: `PC` (15)
+- **Offset**: Address of `len` relative to `PC`.
+- **Binary**:
+  ```
+  1110 010 1 1 0 0 1 1111 0010 <offset>
+  ```
+  - Hex: Depends on the address of `len`.
+
+#### **`mov r7, #4`**
+- **Opcode**: `MOV`
+- **Rd**: `r7` (7)
+- **imm12**: `4`
+- **Binary**:
+  ```
+  1110 001 1101 0 0000 0111 000000000100
+  ```
+  - Hex: `0xe3a07004`
+
+#### **`svc #0`**
+- **Opcode**: `SVC`
+- **imm24**: `0`
+- **Binary**:
+  ```
+  1110 1111 000000000000000000000000
+  ```
+  - Hex: `0xef000000`
+
+#### **`mov r0, #0`**
+- **Opcode**: `MOV`
+- **Rd**: `r0` (0)
+- **imm12**: `0`
+- **Binary**:
+  ```
+  1110 001 1101 0 0000 0000 000000000000
+  ```
+  - Hex: `0xe3a00000`
+
+#### **`mov r7, #1`**
+- **Opcode**: `MOV`
+- **Rd**: `r7` (7)
+- **imm12**: `1`
+- **Binary**:
+  ```
+  1110 001 1101 0 0000 0111 000000000001
+  ```
+  - Hex: `0xe3a07001`
+
+#### **`svc #0`**
+- **Opcode**: `SVC`
+- **imm24**: `0`
+- **Binary**:
+  ```
+  1110 1111 000000000000000000000000
+  ```
+  - Hex: `0xef000000`
 
 ---
 
-### **4. Padding Affects `len`**
-**Problem**: Padding is added to `.ascii` *after* `len` is calculated.  
-**Solution**:  
-- Process the `.ascii` string.  
-- Calculate `len = . - message` **immediately after the string**.  
-- Add padding to align the next section.  
+### **4. Final Binary Output**
+Here’s the binary representation of your code:
+```plaintext
+mov r0, #1      -> 0xe3a00001
+ldr r1, =message -> <address-dependent>
+ldr r2, =len    -> <address-dependent>
+mov r7, #4      -> 0xe3a07004
+svc #0          -> 0xef000000
+mov r0, #0      -> 0xe3a00000
+mov r7, #1      -> 0xe3a07001
+svc #0          -> 0xef000000
+```
 
 ---
 
-### **5. Label Metadata is Invalid**
-**Problem**: `_start` (a code label) has `.data` content.  
-**Solution**:  
-- **Separate data and code labels**:  
-  - Labels in `.data` (e.g., `message`) store data bytes.  
-  - Labels in `.text` (e.g., `_start`) track code offsets.  
-- Set `_start.offset` to the start of `.text` (offset 16), not `0`.
+### **5. Address-Dependent Instructions**
+For `ldr r1, =message` and `ldr r2, =len`, you need to calculate the addresses of `message` and `len` relative to the program counter (`PC`). This requires knowing the final layout of your binary.
 
 ---
 
-### **6. Instruction Processing is Incomplete**
-**Problem**: Instructions like `mov` don’t affect offsets correctly.  
-**Solution**:  
-- In the first pass, **simulate instruction sizes**:  
-  - For every instruction (e.g., `mov`, `ldr`), increment `offset` by `4` bytes.  
-- In the second pass, generate machine code (optional but recommended for correctness).
+### **6. Example Binary Layout**
+Assuming:
+- `.data` starts at `0x1000`.
+- `.text` starts at `0x2000`.
+
+#### **`ldr r1, =message`**
+- `message` is at `0x1000`.
+- `PC` is `0x2004` (current instruction + 8).
+- Offset = `0x1000 - 0x2004 - 8` = `-0x100C` (relative to `PC`).
+
+#### **`ldr r2, =len`**
+- `len` is at `0x100E` (14 bytes after `message`).
+- `PC` is `0x2008` (current instruction + 8).
+- Offset = `0x100E - 0x2008 - 8` = `-0xFFA` (relative to `PC`).
 
 ---
 
-### **7. Global Label Handling**
-**Problem**: `.global _start` assigns `offset=0` instead of the `.text` start.  
-**Solution**:  
-- When processing `.global`, link the label to its **actual section offset**:  
-  - During the first pass, `_start` should resolve to `.text`’s start offset (16).  
-- Ensure labels are marked as global *after* their offsets are calculated.
-
----
-
-### **Key Workflow Fixes**
-1. **First Pass**:
-   - Simulate advancing `offset` for all data/instructions.  
-   - Track section offsets and alignment.  
-   - Resolve symbol addresses (e.g., `message`, `len`, `_start`).  
-
-2. **Second Pass**:
-   - Generate machine code (encode instructions).  
-   - Apply padding where needed.  
-   - Finalize label metadata with correct offsets/sizes.  
-
-3. **Testing**:
-   - Verify `message` starts at `0`, `len=14`, `.text` starts at `16`.  
-   - Check that `_start` points to the first instruction in `.text`.
-
-By addressing these issues systematically, your assembler will correctly handle alignment, symbol resolution, and section layout.
+### **7. Final Notes**
+- Use a tool like `objdump` or `readelf` to verify your binary output.
+- For simplicity, you can use an assembler like `as` or `nasm` to generate the binary and inspect it.

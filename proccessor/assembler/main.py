@@ -3,11 +3,10 @@ from ops import dpis, sdts, regs, swis
 from dataclasses import dataclass
 from typing import Optional, Union, List
 import re
+import struct
 
-#garbage arithmetic
-#todo: fix offsets, fix arithmetic label function, convertation to binary 
-
-
+#no conditions and i dont give a fuck for now
+#i think it is the worst assembler in this world, when i wrote first pass i had no idea what do i actually need so maybe there is some non-sense parts
 
 @dataclass
 class Label:
@@ -43,6 +42,8 @@ class Assembler:
         with open(filename, "r") as f:
             self.code = f.readlines()
         
+
+        # offset : [normal representation, binary(or hex or whatever)]
         self.processedCode = {}
 
 
@@ -190,19 +191,222 @@ class Assembler:
                     
             raise ValueError(f"Referenced label {labelName} not found")
 
-    
+##################################################################################
+##################################################################################
+##################################################################################
 
 
     def tokenize(self):
         self.code = None
+        self.tokenizeLabelData()
+        startPoint = None
+
+        for label in self.labels:
+            if 'start' in label.name:
+                startPoint = label.offset
+                break
+
+
+        
+        for offset, line in sorted(self.processedCode.items()): 
+            if offset < startPoint:
+                continue
+            
+            self.currentSection = 1
+
+            tokens = line.split()
+            for idx in range(len(tokens)):
+                tokens[idx] = tokens[idx].split(",")[0]
+
+            operands = tokens[1:]
+            instruction = tokens[0]
+            if instruction in dpis:  
+                machine_code = self.DPItoBIN(instruction, operands, offset)
+                print(f"{tokens} --> {machine_code}")
+                continue
+            elif instruction in sdts:  
+                machine_code = self.SDTtoBIN(instruction, operands, offset)
+                print(f"{tokens} --> {machine_code}")
+                continue
+            elif instruction in swis:  
+                machine_code = self.SWItoBIN(instruction, operands, offset)
+                print(f"{tokens} --> {machine_code}")
+                continue
+            
+        
+        #self.writeToBinary()
+
+
+
+
+    def DPItoBIN(self, instruction, operands, offset, condition=0b1110, flags=0b0):
+        rd = int(operands[0][1:])
+        operand2 = operands[1]
+
+        if operand2.startswith('#'):
+            immVal = int(operand2[1:])
+
+            rotate, imm8 = self.encodeImm(immVal)
+            operand2_code = (rotate << 8) | imm8
+            I = 0b1 #immediate operand
+        
+        else:
+
+            raise NotImplementedError("Register operands not implemented")
+
+        opcode = dpis[instruction]
+
+
+        binary = ( 
+            (condition << 28) |
+            (I << 25) |
+            (opcode << 21) | 
+            (flags << 20) |
+            (rd << 12) |
+            operand2_code
+        )
+        return struct.pack('<I', binary)
+
+
+
+
+    def SDTtoBIN(self, instruction, operands, offset, condition=0b1110):
+        if len(operands) == 2 and operands[1].startswith('='):
+            rd = int(operands[0][1:])
+            labelName = operands[1][1:]
+                
+            if self.sections[self.currentSection].name == 'text':
+                currentAddress = 0x2000 + offset
+
+            label = next((l for l in self.labels if l.name == labelName), None)
+            if not label:
+                raise ValueError(f"Undefined label: {labelName}")
+            
+            print(currentAddress)
+            #i think its not label offset but i need to give it different name that just offset 
+            pc = currentAddress + 8
+            labelOffset = label.offset - pc
+
+            if not (-4095 <= labelOffset <= 4095):
+                raise ValueError(f"label {labelName} too far from pc")
+
+            U = 0b1 if offset >= 0 else 0b0
+            imm12 = abs(offset)
+            binary = (
+                (0b1110 << 28) |    
+                (0b010 << 25) | 
+                (0b0 << 25) |       
+                (0b1 << 24) |       
+                (U << 23) |            
+                (0b0 << 22) |       
+                (0b0 << 21) |          
+                (0b1 << 20) |   
+                (15 << 16) |        
+                (rd << 12) |           
+                (imm12 & 0xFFF)     
+            )
+            return struct.pack('<I', binary)
+        
+        else:
+            B = 0b0
+            L = 0b1 if instruction == 'ldr' else 0b0 #load or store
+
+            rd = int(operands[0][1:])
+            memOps = operands[1].strip('[]').split(',')
+
+            if ']' in operands[1]:
+                #post indexed
+                P = 0b0
+                W = 0b1
+                rnStr = memOps[0].strip()
+                offsetStr = memOps[1].strip()
+            else:
+                #pre indexed
+                P = 0b1
+                W = 0b0
+                rnStr = memOps[0].strip()
+                offsetStr = memOps[1].strip()
+
+            rn = int(rnStr[1:])
+
+            if offsetStr.startswith('#'):
+                #imm offset
+                I = 0b0
+                offset = int(offsetStr[1:])
+                U = 0b1
+                imm12 = offset
+            elif offsetStr.startswith('r'):
+                #reg offset
+                I = 0b1
+                rm = int(offsetStr[1:])
+                imm12 = rm
+
+                shift = 0b00
+                imm12 = (shift << 4) | r,
+            else:
+                raise ValueError(f"Invalid offset - {offsetStr}")
+
+            binary = (
+                    (cond << 28) |
+                    (0b010 << 25) | 
+                    (I << 25) |
+                    (P << 24) |
+                    (U << 23) | 
+                    (B << 22) |
+                    (W << 21) |
+                    (L << 20) |
+                    (rn << 16) |
+                    (rd << 12) |
+                    imm12
+                )
+            return struct.pack('<I', binary)
+
+
+
+
+
+    def SWItoBIN(self, instruction, operands, offset, condition=0b1110, flags=0b0):
+        imm24 = int(operands[0].strip('# '))
+        binary = (condition << 28) | (0b1111 << 24) | (imm24 & 0x00FFFFFF)
+
+        return struct.pack('<I', binary)
+
+
+    def tokenizeLabelData(self):
+        for label in self.labels:
+            if isinstance(label.data, str):
+                hex_bytes = [hex(ord(c)) for c in label.data]
+                label.data = hex_bytes
+            if isinstance(label.data, int):
+                label.data = hex(label.data).rjust(8, '0')
+
+    
+    def packELF(self):
         pass
+
     
 
+    def writeToBinary(self, name="out.o"):
+        elfStruct = self.packELF()
+        f = open(name, "a")
+        f.write(elfStruct)
+        f.close()        
+
+
+    def encodeImm(self, value):
+    #some cool stuff that i have no clue about
+    #ARM immediate encoding: 8-bit value rotated right by even bits.
+        for rotate in range(0, 16):
+            imm8 = (value >> (2 * rotate)) & 0xFF
+            if (imm8 << (2 * rotate)) == value:
+                return (rotate, imm8)
+        raise ValueError(f"Cannot encode immediate {value}")
 
 
 
-
-
+##################################################################################
+##################################################################################
+##################################################################################
 
     def parseFile(self):
         self.firstPass()
@@ -217,8 +421,7 @@ class Assembler:
     def debug(self):
         print(self.processedCode)
         print(self.sections)
-        print(self.labels)
-                    
+        print(self.labels)                   
 
 
 if __name__ == "__main__":
