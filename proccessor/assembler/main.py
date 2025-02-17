@@ -17,7 +17,8 @@ class Label:
     isGlobal : bool = False
     section : Optional[str] = None
     padding : int = 0
-    endoffset : Optional[int] = None
+    isConstant : bool = False
+    literalPoolAddr : Optional[int] = None
 
 @dataclass
 class Section:
@@ -25,7 +26,7 @@ class Section:
     startOffset : Optional[int] = None
     size : int = 0
     padding : int = 0 #update on end of section
-
+    baseAddress : int = 0
 
 #i could do labels and sections not array but dict and it would be more efficient i guess but i don't have much desire to rewrite it
 class Assembler:
@@ -75,7 +76,8 @@ class Assembler:
             self.sections.append(Section(
                 name=sectionName,
                 startOffset=self.offset,
-                padding=0
+                padding=0,
+                baseAddress = 0x1000 if sectionName=='text' else 0x2000
             ))
             self.currentSection = len(self.sections) - 1
 
@@ -185,7 +187,8 @@ class Assembler:
                         name=assignTo,
                         data=result,
                         section=self.sections[self.currentSection],
-                        offset = self.offset
+                        offset = self.offset,
+                        isConstant = True
                     ))
                     return
                     
@@ -200,6 +203,7 @@ class Assembler:
         self.code = None
         self.tokenizeLabelData()
         startPoint = None
+        self.literalPoolAddressing()
 
         for label in self.labels:
             if 'start' in label.name:
@@ -271,8 +275,82 @@ class Assembler:
 
 
     def SDTtoBIN(self, instruction, operands, offset, condition=0b1110):
-        pass           
+        isLoad = instruction.lower() == 'ldr'
+        opcode = sdts[instruction]
+        rd = int(operands[0][1:])
+        
+        if isLoad and '=' in operands[1]:
+            operands[1] = self.processPseudoInst(offset, operands[1])
 
+
+        memOp = re.match(r'\[(.*)\]!?', operands[1])
+        if not memOp:
+            raise SyntaxError(f"invalid memory operand: {operands[1]}")
+
+        components = memOp.group(1).split(",")
+        rn = int(components[0][1:])
+
+        offsetVal = 0
+        isImm = True
+        preIndexed = True
+        writeback = '!' in operands[1]
+        byteTransfer = False
+        
+
+        #special case for pc reg
+        if rn == 15:
+            offsetVal = offsetVal & ~0x3
+            if offsetVal < 0:
+                raise ValueError("negative pc offsets not supported")
+
+
+        if len(components) > 1:
+            offset_part = components[1].strip()
+            if offset_part.startswith('#'):
+                offsetVal = int(offset_part[1:])
+                isImm = True
+            else:
+                rm = int(offset_part[1:])
+                isImm = False
+                offsetVal = rm
+
+
+        postIndexed = False
+        if not preIndexed and len(operands) > 2:
+            offsetVal = int(operands[2][1:])
+            postIndexed = True
+
+        I_bit = 0 if isImm else 1
+        P_bit = 1 if preIndexed else 0
+        U_bit = 1
+        W_bit = 1 if writeback else 0
+        L_bit = 1 if isLoad else 0
+
+        if isImm:
+            if offsetVal < 0 or offsetVal >= 4096:
+                raise ValueError(f"fuck you")
+            offsetEnc = offsetVal
+        else:
+            offsetEnc = (rm << 8)
+
+        machine_code = (
+                (condition << 28) | 
+                (opcode << 25) |
+                (I_bit << 24) |
+                (P_bit << 23) |
+                (U_bit << 22) | 
+                (byteTransfer << 21) |
+                (W_bit << 20) |
+                (L_bit << 19) |
+                (rn << 16) |
+                (rd << 12) |
+                (offsetEnc & 0xfff)
+
+                )
+        return struct.pack('<I', machine_code)
+
+
+            
 
 
     def SWItoBIN(self, instruction, operands, offset, condition=0b1110, flags=0b0):
@@ -287,10 +365,37 @@ class Assembler:
             if isinstance(label.data, str):
                 hex_bytes = [hex(ord(c)) for c in label.data]
                 label.data = hex_bytes
-            if isinstance(label.data, int):
-                label.data = hex(label.data).rjust(8, '0')
+                
 
-    
+    #convert =label to [pc, offset]
+    def processPseudoInst(self, currentOffset, pseudoLabel):
+        name = pseudoLabel[1:]
+
+        label = next(l for l in self.labels if l.name == name)
+
+        currentAddress = self.sections[self.currentSection].baseAddress + currentOffset
+        pc = currentAddress + 8
+        lpAddr = label.literalPoolAddr
+
+        offset = lpAddr - pc
+
+        if not (-4095 <= offset <= 4095):
+            raise ValueError(f"offset is too far so fuck you")
+
+
+        return f'[{pc}, #{offset}]'
+
+
+    #no actual literal pool but only filling labels' lp addr variables
+    def literalPoolAddressing(self):
+        dataSection = next(s for s in self.sections if s.name == 'data')
+        for label in self.labels:
+            if 'start' in label.name:
+                continue
+            address = dataSection.baseAddress + label.offset
+            label.literalPoolAddr = address
+
+
     def packELF(self):
         pass
 
@@ -301,6 +406,7 @@ class Assembler:
         f = open(name, "a")
         f.write(elfStruct)
         f.close()        
+
 
 
     def encodeImm(self, value):
@@ -332,7 +438,6 @@ class Assembler:
         print(self.processedCode)
         print(self.sections)
         print(self.labels)                   
-
 
 if __name__ == "__main__":
     fatass = Assembler("hw.s");
