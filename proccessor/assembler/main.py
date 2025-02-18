@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Optional, Union, List, Dict
 import re
 import struct
+import sys
+
 
 #no conditions and i dont give a fuck for now
 #i think it is the worst assembler in this world, when i wrote first pass i had no idea what do i actually need so maybe there is some non-sense parts
@@ -295,7 +297,14 @@ class Assembler:
             rd = int(operands[0][1:])
             opcode = sdts[instruction]
             # Get PC-relative offset info
-            pc, offset = self.processPseudoInst(offset, operands[1].split('=')[1])
+
+            labelName = operands[1][1:]
+            label = next(l for l in self.labels if l.name == labelName)
+            
+            if label.isConstant:
+                return self.DPItoBIN("mov", [f"r{rd}", f"#{label.data}"], offset)
+
+            pc, offset = self.processPseudoInst(offset, label)
             
             return struct.pack('<I', 
                 (condition << 28) |
@@ -327,8 +336,7 @@ class Assembler:
 
 
     #convert label to [pc, offset]
-    def processPseudoInst(self, currentOffset, labelName):
-        label = next(l for l in self.labels if l.name == labelName)
+    def processPseudoInst(self, currentOffset, label):
         pc = currentOffset + 8
         offset = label.literalPoolAddress - pc
 
@@ -398,6 +406,9 @@ class Assembler:
 
 
 if __name__ == "__main__":
-    fatass = Assembler("hw.s");
+    assert len(sys.argv) == 2
+    
+
+    fatass = Assembler(sys.argv[1])
     fatass.parseFile()
     fatass.debug() 
