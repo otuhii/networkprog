@@ -1,7 +1,7 @@
 #for simple arm hello world program
 from ops import dpis, sdts, regs, swis
 from dataclasses import dataclass
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict
 import re
 import struct
 
@@ -18,15 +18,18 @@ class Label:
     section : Optional[str] = None
     padding : int = 0
     isConstant : bool = False
-    literalPoolAddr : Optional[int] = None
+    literalPoolAddress : Optional[int] = None
+
 
 @dataclass
 class Section:
+    data : Dict[int, Union[str, int]]
     name : Optional[str] = None
     startOffset : Optional[int] = None
     size : int = 0
     padding : int = 0 #update on end of section
     baseAddress : int = 0
+    poolEntry : Optional[int] = None   
 
 #i could do labels and sections not array but dict and it would be more efficient i guess but i don't have much desire to rewrite it
 class Assembler:
@@ -47,7 +50,7 @@ class Assembler:
         # offset : [normal representation, binary(or hex or whatever)]
         self.processedCode = {}
 
-
+        self.literalPool = []
 
 
 
@@ -77,7 +80,8 @@ class Assembler:
                 name=sectionName,
                 startOffset=self.offset,
                 padding=0,
-                baseAddress = 0x1000 if sectionName=='text' else 0x2000
+                baseAddress = 0x1000 if sectionName=='text' else 0x2000,
+                data={}
             ))
             self.currentSection = len(self.sections) - 1
 
@@ -116,6 +120,8 @@ class Assembler:
             line = line.strip("\n").strip()
             
             self.processedCode[self.offset] = line
+            
+            currentOffset = self.offset 
 
             if 'ascii' in line:
                 self.processAscii(line)
@@ -136,9 +142,16 @@ class Assembler:
                 self.processLabel(line)
                 continue
             else:
-                self.offset += self.INSTRUCTION_SIZE
+                if '=' in line:
+                    labelName = line.split()[-1].split('=')[1]
+                    if labelName not in self.literalPool:
+                        self.literalPool.append(labelName)
+
                 if self.currentSection is not None:
                     self.sections[self.currentSection].size += self.INSTRUCTION_SIZE
+                    section = self.sections[self.currentSection]
+                    section.data[self.offset-section.startOffset] = line
+                self.offset += self.INSTRUCTION_SIZE
 
 
 
@@ -211,14 +224,16 @@ class Assembler:
                 break
 
 
-        
-        for offset, line in sorted(self.processedCode.items()): 
-            if offset < startPoint:
-                continue
+        textSection = next(s for s in self.sections if s.name == 'text')
+        for offset, line in textSection.data.items():
             
+            if offset >= textSection.poolEntry:
+                break
+
             self.currentSection = 1
 
-            tokens = line.split()
+            if not isinstance(line, int):
+                tokens = line.split()
             for idx in range(len(tokens)):
                 tokens[idx] = tokens[idx].split(",")[0]
 
@@ -275,82 +290,25 @@ class Assembler:
 
 
     def SDTtoBIN(self, instruction, operands, offset, condition=0b1110):
-        isLoad = instruction.lower() == 'ldr'
-        opcode = sdts[instruction]
-        rd = int(operands[0][1:])
-        
-        if isLoad and '=' in operands[1]:
-            operands[1] = self.processPseudoInst(offset, operands[1])
-
-
-        memOp = re.match(r'\[(.*)\]!?', operands[1])
-        if not memOp:
-            raise SyntaxError(f"invalid memory operand: {operands[1]}")
-
-        components = memOp.group(1).split(",")
-        rn = int(components[0][1:])
-
-        offsetVal = 0
-        isImm = True
-        preIndexed = True
-        writeback = '!' in operands[1]
-        byteTransfer = False
-        
-
-        #special case for pc reg
-        if rn == 15:
-            offsetVal = offsetVal & ~0x3
-            if offsetVal < 0:
-                raise ValueError("negative pc offsets not supported")
-
-
-        if len(components) > 1:
-            offset_part = components[1].strip()
-            if offset_part.startswith('#'):
-                offsetVal = int(offset_part[1:])
-                isImm = True
-            else:
-                rm = int(offset_part[1:])
-                isImm = False
-                offsetVal = rm
-
-
-        postIndexed = False
-        if not preIndexed and len(operands) > 2:
-            offsetVal = int(operands[2][1:])
-            postIndexed = True
-
-        I_bit = 0 if isImm else 1
-        P_bit = 1 if preIndexed else 0
-        U_bit = 1
-        W_bit = 1 if writeback else 0
-        L_bit = 1 if isLoad else 0
-
-        if isImm:
-            if offsetVal < 0 or offsetVal >= 4096:
-                raise ValueError(f"fuck you")
-            offsetEnc = offsetVal
-        else:
-            offsetEnc = (rm << 8)
-
-        machine_code = (
-                (condition << 28) | 
-                (opcode << 25) |
-                (I_bit << 24) |
-                (P_bit << 23) |
-                (U_bit << 22) | 
-                (byteTransfer << 21) |
-                (W_bit << 20) |
-                (L_bit << 19) |
-                (rn << 16) |
-                (rd << 12) |
-                (offsetEnc & 0xfff)
-
-                )
-        return struct.pack('<I', machine_code)
-
-
+        if instruction == 'ldr':
+            # Get target register
+            rd = int(operands[0][1:])
+            opcode = sdts[instruction]
+            # Get PC-relative offset info
+            pc, offset = self.processPseudoInst(offset, operands[1].split('=')[1])
             
+            return struct.pack('<I', 
+                (condition << 28) |
+                (opcode << 25) |    # I=0 for immediate offset
+                (1 << 24) |       # P=1 (offset addressing)
+                (1 << 23) |  # U=1 for positive offset
+                (0 << 22) |       # B=0 (word transfer)
+                (0 << 21) |       # W=0 (no writeback)
+                (1 << 20) |       # L=1 (load)
+                (0b1111 << 16) |  # Rn=PC (0b1111)
+                (rd << 12) |
+                (offset & 0xFFF)  # Use absolute offset value
+            )
 
 
     def SWItoBIN(self, instruction, operands, offset, condition=0b1110, flags=0b0):
@@ -365,36 +323,31 @@ class Assembler:
             if isinstance(label.data, str):
                 hex_bytes = [hex(ord(c)) for c in label.data]
                 label.data = hex_bytes
-                
-
-    #convert =label to [pc, offset]
-    def processPseudoInst(self, currentOffset, pseudoLabel):
-        name = pseudoLabel[1:]
-
-        label = next(l for l in self.labels if l.name == name)
-
-        currentAddress = self.sections[self.currentSection].baseAddress + currentOffset
-        pc = currentAddress + 8
-        lpAddr = label.literalPoolAddr
-
-        offset = lpAddr - pc
-
-        if not (-4095 <= offset <= 4095):
-            raise ValueError(f"offset is too far so fuck you")
 
 
-        return f'[{pc}, #{offset}]'
 
+    #convert label to [pc, offset]
+    def processPseudoInst(self, currentOffset, labelName):
+        label = next(l for l in self.labels if l.name == labelName)
+        pc = currentOffset + 8
+        offset = label.literalPoolAddress - pc
 
-    #no actual literal pool but only filling labels' lp addr variables
+        return [pc, offset]
+
     def literalPoolAddressing(self):
-        dataSection = next(s for s in self.sections if s.name == 'data')
-        for label in self.labels:
-            if 'start' in label.name:
-                continue
-            address = dataSection.baseAddress + label.offset
-            label.literalPoolAddr = address
+        textSection = next(s for s in self.sections if s.name == 'text')
+        textSection.poolEntry = textSection.size
 
+        for labelName in self.literalPool:
+            label = next(l for l in self.labels if l.name == labelName)
+            if not label.isConstant:
+                address = label.section.baseAddress+label.offset
+                textSection.data[textSection.size] = address
+            else:
+                textSection.data[textSection.size] = label.data
+
+            label.literalPoolAddress = textSection.size
+            textSection.size += 4
 
     def packELF(self):
         pass
@@ -437,7 +390,12 @@ class Assembler:
     def debug(self):
         print(self.processedCode)
         print(self.sections)
-        print(self.labels)                   
+        print(self.labels)
+        print(self.literalPool)
+        textSection = next(s for s in self.sections if s.name == 'text')
+        for of, l in textSection.data.items():
+            print(f"{of} : {l}")
+
 
 if __name__ == "__main__":
     fatass = Assembler("hw.s");
