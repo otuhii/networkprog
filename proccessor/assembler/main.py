@@ -6,9 +6,19 @@ import re
 import struct
 import sys
 
+from errorHandling import debug_all_methods
 
 #no conditions and i dont give a fuck for now
 #i think it is the worst assembler in this world, when i wrote first pass i had no idea what do i actually need so maybe there is some non-sense parts
+
+#to do:
+#   ldr with constant value detection 
+#   conditions processing
+#   form obj file
+#actually just rewrite this garbage 
+
+
+
 
 @dataclass
 class Label:
@@ -34,6 +44,7 @@ class Section:
     poolEntry : Optional[int] = None   
 
 #i could do labels and sections not array but dict and it would be more efficient i guess but i don't have much desire to rewrite it
+@debug_all_methods
 class Assembler:
     def __init__(self, filename):
         self.labels = []
@@ -140,7 +151,7 @@ class Assembler:
                 self.processSections(line)
                 continue
 
-            elif line.endswith(":"):
+            elif ':' in line:
                 self.processLabel(line)
                 continue
             else:
@@ -345,7 +356,8 @@ class Assembler:
     def literalPoolAddressing(self):
         textSection = next(s for s in self.sections if s.name == 'text')
         textSection.poolEntry = textSection.size
-
+        
+        print(self.literalPool)
         for labelName in self.literalPool:
             label = next(l for l in self.labels if l.name == labelName)
             if not label.isConstant:
