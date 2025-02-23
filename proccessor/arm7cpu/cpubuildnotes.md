@@ -8,7 +8,7 @@ some my thoughts notes and questions/answers will be here along my cpu building 
      - 32-bit RISC architecture.
      - 3-stage pipeline: **Fetch → Decode → Execute**.
      - 37 registers (including banked registers for modes like IRQ/SVC).
-     - CPSR (Current Program Status Register) for flags (N, Z, C, V) and modes.
+     - CPSR (Current Program Status Register) for flags (N, Z, C, V) and -b
    - **Critical Resource**: Study the [ARM7TDMI Technical Reference Manual](https://developer.arm.com/documentation/ddi0210/c/).
 
 #### **2. Digital Logic Fundamentals**
