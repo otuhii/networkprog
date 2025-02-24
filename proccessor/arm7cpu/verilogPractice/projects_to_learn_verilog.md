@@ -9,7 +9,11 @@ Here’s a list of small to medium-sized Verilog projects that are fundamental b
   - Output: Two 4-bit BCD digits (tens and units).
   - This will help you practice combinational logic and case statements.
 
+DONE!!
+
+
 ---
+
 
 ### **2. Sequential Logic: Registers and Counters**
 - **Project**: Design a 4-bit shift register with parallel load.
@@ -17,6 +21,8 @@ Here’s a list of small to medium-sized Verilog projects that are fundamental b
   - Output: 4-bit serial output.
   - Functionality: On a clock edge, the register should shift its contents or load new data based on the load signal.
 
+
+DONE !!
 ---
 
 ### **3. Finite State Machine (FSM)**
@@ -41,7 +47,6 @@ Here’s a list of small to medium-sized Verilog projects that are fundamental b
   - Inputs: Address (e.g., 4 bits), data in (e.g., 8 bits), write enable, clock.
   - Output: Data out (8 bits).
   - Functionality: Write data to a specific address or read data from an address.
-
 ---
 
 ### **6. Multiplexers and Demultiplexers**
