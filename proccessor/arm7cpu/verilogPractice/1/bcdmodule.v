@@ -41,21 +41,26 @@ always @(posedge clk or posedge rst) begin
         st <= ADD; 
       end 
     
-      ADD: begin 
-        if (shiftReg[19:16] >= 5)
-          shiftReg[19:16] <= shiftReg[19:16] + 3;
-        if (shiftReg[15:12] >= 5)
-          shiftReg[15:12] <= shiftReg[15:12] + 3;
-        if (shiftReg[11:8] >= 5)
-          shiftReg[11:8] <= shiftReg[11:8] + 3;
-        
+      ADD: begin
+        if (counter < 7) begin
+          if (shiftReg[19:16] >= 5)
+            shiftReg[19:16] <= shiftReg[19:16] + 3;
+          if (shiftReg[15:12] >= 5)
+            shiftReg[15:12] <= shiftReg[15:12] + 3;
+          if (shiftReg[11:8] >= 5)
+            shiftReg[11:8] <= shiftReg[11:8] + 3;
+        end
 
-        if (counter >= 7) 
+
+
+        if (counter == 7) 
           st <= DONE;
         else begin 
           counter <= counter + 1;
           st <= SHIFT;
         end
+
+  
       end 
 
       DONE: begin 
