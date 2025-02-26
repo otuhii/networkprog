@@ -1,4 +1,4 @@
-deep seek xd
+dep seek xd
 Here’s a list of small to medium-sized Verilog projects that are fundamental but not too easy or too hard. These projects will help you practice Verilog and prepare you for implementing CPU components like registers, ALUs, and more. Each project can be completed in one evening and will reinforce your understanding of Verilog concepts.
 
 ---
@@ -25,14 +25,6 @@ DONE!!
 DONE !!
 ---
 
-### **3. Finite State Machine (FSM)**
-- **Project**: Implement a traffic light controller using an FSM.
-  - States: Red, Yellow, Green.
-  - Input: Clock, reset.
-  - Output: Signals for each light (e.g., 3 bits for R, Y, G).
-  - Timing: Red (10 cycles), Green (8 cycles), Yellow (2 cycles).
-
----
 
 ### **4. Arithmetic Logic Unit (ALU)**
 - **Project**: Design a simple 4-bit ALU.
@@ -40,6 +32,8 @@ DONE !!
   - Output: 4-bit result.
   - Optional: Add a carry-out flag for addition/subtraction.
 
+
+DONE!!
 ---
 
 ### **5. Memory Unit**
@@ -48,6 +42,13 @@ DONE !!
   - Output: Data out (8 bits).
   - Functionality: Write data to a specific address or read data from an address.
 ---
+
+
+
+i dont care(( like i gonna start writing cpu and actually see how all this connects and so. I grasped basics of verilog and everything else would find out in process of building
+
+
+
 
 ### **6. Multiplexers and Demultiplexers**
 - **Project**: Design a 4-to-1 multiplexer and a 1-to-4 demultiplexer.
@@ -167,10 +168,47 @@ DONE !!
 
 ---
 
-### **Tips for Implementation**:
-1. Start with a clear block diagram of your design.
-2. Write testbenches for each module to verify functionality.
-3. Use simulation tools like ModelSim or Vivado to debug your designs.
-4. Gradually increase complexity by combining smaller modules into larger systems.
 
-By working through these projects, you’ll gain confidence in Verilog and be well-prepared to tackle more complex CPU components. Good luck!
+# Пояснення часової шкали Verilog та виконання модулів
+
+Я поясню українською концепцію часової шкали у Verilog та як виконуються модулі в тестовому середовищі.
+
+## Основна концепція виконання модулів у Verilog
+
+У Verilog модулі не "викликаються" як функції в інших мовах програмування. Усі модулі існують паралельно і постійно активні. Коли ви створюєте екземпляр модуля (як `bcd uut` у вашому коді), модуль автоматично стає частиною схеми моделювання.
+
+## Як це працює у вашому тестовому середовищі
+
+1. **Інстанціювання модуля**: Ви створили екземпляр модуля `bcd` з назвою `uut` та підключили його порти до відповідних сигналів тестового середовища. Цей екземпляр активний протягом усього моделювання.
+
+2. **Часова шкала і події**: Verilog використовує дискретну часову шкалу для моделювання. У вашому коді є кілька часових конструкцій:
+   - `forever #5 clk = ~clk;` - генерує тактові імпульси кожні 5 одиниць часу
+   - `#10 rst = 0;` - затримка скидання після 10 одиниць часу
+   - `wait(completeness);` - очікування сигналу завершення перед продовженням
+
+3. **Паралельне виконання**: Усі блоки `initial` та `always` у вашому коді виконуються паралельно:
+   - Перший блок `initial` генерує тактові імпульси
+   - Другий блок `initial` керує сигналами `rst` та `number`
+   - Блок `always @(posedge completeness)` виконується щоразу, коли `completeness` змінюється з 0 на 1
+
+## Як модуль `bcd` знає, коли виконуватися
+
+Модуль `bcd` реагує на зміни вхідних сигналів (`clk`, `rst`, `bin`). Всередині модуля `bcd` є процеси (блоки `always` або призначення безперервних сигналів), які активуються, коли змінюються їхні тригерні сигнали.
+
+Наприклад, якщо в модулі `bcd` є блок `always @(posedge clk)`, він виконується кожен раз, коли сигнал `clk` змінюється з 0 на 1. Оскільки ваше тестове середовище генерує тактові імпульси кожні 5 одиниць часу, внутрішні процеси модуля `bcd` будуть виконуватися синхронно з цим сигналом.
+
+## Порядок моделювання
+
+1. Симулятор ініціалізує всі сигнали
+2. Виконуються всі блоки `initial`
+3. Симулятор просувається по часовій шкалі
+4. При зміні сигналів виконуються відповідні блоки `always`
+5. Процес продовжується до виклику `$finish`
+
+На відміну від звичайних мов програмування, де функції викликаються послідовно, у Verilog модулі працюють паралельно, реагуючи на події, які відбуваються в системі. Це відображає природу апаратних систем, де всі компоненти функціонують одночасно.
+
+
+
+
+
+timescale - перше число визначає загалом одиниці виміру таких штук як #10 або інші часові дефініції, а друге число показує яка є найменша одиниця яку можна розрізняти як окрему одиницю часу(для мене воно схоже на якісь числа з комою, там теж тіпа дабл пресішин і тд)
